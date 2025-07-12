@@ -243,9 +243,9 @@ export const InsurerClaims = () => {
   }
 
   const getRiskColor = (fraudScore) => {
-    if (fraudScore > 0.7) return 'text-red-600 bg-red-100'
-    if (fraudScore > 0.4) return 'text-yellow-600 bg-yellow-100'
-    return 'text-green-600 bg-green-100'
+    if (fraudScore > 0.7) return 'text-red-400 bg-red-900/50 border border-red-500/50'
+    if (fraudScore > 0.4) return 'text-yellow-400 bg-yellow-900/50 border border-yellow-500/50'
+    return 'text-green-400 bg-green-900/50 border border-green-500/50'
   }
 
   const formatCurrency = (amount) => {
@@ -288,47 +288,47 @@ export const InsurerClaims = () => {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-        <Card className="p-4">
+        <Card className="p-4 bg-gray-800/50 border-gray-700">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Total Claims</p>
-              <p className="text-2xl font-bold">{stats.total}</p>
+              <p className="text-sm text-gray-400">Total Claims</p>
+              <p className="text-2xl font-bold text-gray-100">{stats.total}</p>
             </div>
             <FileText className="w-8 h-8 text-gray-400" />
           </div>
         </Card>
-        <Card className="p-4">
+        <Card className="p-4 bg-gray-800/50 border-gray-700">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Pending Review</p>
-              <p className="text-2xl font-bold text-yellow-600">{stats.pending}</p>
+              <p className="text-sm text-gray-400">Pending Review</p>
+              <p className="text-2xl font-bold text-yellow-400">{stats.pending}</p>
             </div>
             <Clock className="w-8 h-8 text-yellow-400" />
           </div>
         </Card>
-        <Card className="p-4">
+        <Card className="p-4 bg-gray-800/50 border-gray-700">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Approved</p>
-              <p className="text-2xl font-bold text-green-600">{stats.approved}</p>
+              <p className="text-sm text-gray-400">Approved</p>
+              <p className="text-2xl font-bold text-green-400">{stats.approved}</p>
             </div>
             <CheckCircle className="w-8 h-8 text-green-400" />
           </div>
         </Card>
-        <Card className="p-4">
+        <Card className="p-4 bg-gray-800/50 border-gray-700">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Rejected</p>
-              <p className="text-2xl font-bold text-red-600">{stats.rejected}</p>
+              <p className="text-sm text-gray-400">Rejected</p>
+              <p className="text-2xl font-bold text-red-400">{stats.rejected}</p>
             </div>
             <XCircle className="w-8 h-8 text-red-400" />
           </div>
         </Card>
-        <Card className="p-4">
+        <Card className="p-4 bg-gray-800/50 border-gray-700">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">High Risk</p>
-              <p className="text-2xl font-bold text-orange-600">{stats.highRisk}</p>
+              <p className="text-sm text-gray-400">High Risk</p>
+              <p className="text-2xl font-bold text-orange-400">{stats.highRisk}</p>
             </div>
             <AlertTriangle className="w-8 h-8 text-orange-400" />
           </div>
@@ -336,7 +336,7 @@ export const InsurerClaims = () => {
       </div>
 
       {/* Filters */}
-      <Card className="mb-6">
+      <Card className="mb-6 bg-gray-800/50 border-gray-700">
         <CardBody>
           <div className="flex flex-col lg:flex-row gap-4">
             <Input
@@ -389,15 +389,15 @@ export const InsurerClaims = () => {
 
       {/* Bulk Actions */}
       {selectedClaims.length > 0 && (
-        <div className="mb-4 p-4 bg-blue-50 rounded-lg flex items-center justify-between">
-          <span className="text-sm font-medium">
+        <div className="mb-4 p-4 bg-blue-900/20 border border-blue-500/50 rounded-lg flex items-center justify-between">
+          <span className="text-sm font-medium text-blue-400">
             {selectedClaims.length} claim(s) selected
           </span>
           <div className="flex gap-2">
             <Button size="sm" onClick={() => handleBulkAction('approve')}>
               Approve Selected
             </Button>
-            <Button size="sm" variant="error" onClick={() => handleBulkAction('reject')}>
+            <Button size="sm" variant="danger" onClick={() => handleBulkAction('reject')}>
               Reject Selected
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setSelectedClaims([])}>
@@ -408,75 +408,75 @@ export const InsurerClaims = () => {
       )}
 
       {/* Claims Table */}
-      <Card>
+      <Card className="bg-gray-800/50 border-gray-700">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-gray-700/50 border-b border-gray-600">
               <tr>
                 <th className="px-6 py-3 text-left">
                   <input
                     type="checkbox"
                     onChange={handleSelectAll}
                     checked={selectedClaims.length === filteredClaims.length && filteredClaims.length > 0}
-                    className="rounded border-gray-300"
+                    className="rounded border-gray-600 bg-gray-700 text-cyan-500 focus:ring-cyan-500"
                   />
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Claim Info
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Customer
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Type
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Amount
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Risk
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Priority
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="divide-y divide-gray-700">
               {filteredClaims.map((claim) => (
-                <tr key={claim.id} className="hover:bg-gray-50">
+                <tr key={claim.id} className="hover:bg-gray-700/30 transition-all duration-200">
                   <td className="px-6 py-4">
                     <input
                       type="checkbox"
                       checked={selectedClaims.includes(claim.id)}
                       onChange={() => handleSelectClaim(claim.id)}
-                      className="rounded border-gray-300"
+                      className="rounded border-gray-600 bg-gray-700 text-cyan-500 focus:ring-cyan-500"
                     />
                   </td>
                   <td className="px-6 py-4">
                     <div>
-                      <p className="font-medium text-gray-900">
+                      <p className="font-medium text-gray-100">
                         {claim.claim_data.claimNumber}
                       </p>
-                      <p className="text-sm text-gray-500">
+                      <p className="text-sm text-gray-400">
                         {format(new Date(claim.created_at), 'MMM d, yyyy')}
                       </p>
                     </div>
                   </td>
                   <td className="px-6 py-4">
                     <div>
-                      <p className="font-medium text-gray-900">
+                      <p className="font-medium text-gray-100">
                         {claim.customer.name}
                       </p>
-                      <p className="text-sm text-gray-500">
+                      <p className="text-sm text-gray-400">
                         {claim.customer.email}
                       </p>
-                      <p className="text-xs text-gray-400">
+                      <p className="text-xs text-gray-500">
                         {claim.customer.totalClaims} total claims
                       </p>
                     </div>
@@ -484,7 +484,7 @@ export const InsurerClaims = () => {
                   <td className="px-6 py-4">
                     <Badge variant="info">{claim.claim_data.claimType}</Badge>
                   </td>
-                  <td className="px-6 py-4 font-semibold">
+                  <td className="px-6 py-4 font-semibold text-gray-100">
                     {formatCurrency(claim.claim_data.estimatedAmount)}
                   </td>
                   <td className="px-6 py-4">
