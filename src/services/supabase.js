@@ -1,266 +1,254 @@
 import { createClient } from '@supabase/supabase-js'
-import { api } from './api.js'
-import { localAuth } from './localStorage.js'
 
-// Check if we should use mock API
-const USE_MOCK_API = import.meta.env.VITE_USE_MOCK_API === 'true'
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-console.log('Using API:', USE_MOCK_API ? 'Mock (JSON Server)' : 'Real (Supabase)')
-
-// Real Supabase implementation
-const createRealSupabase = () => {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-
-  if (!USE_MOCK_API && (!supabaseUrl || !supabaseAnonKey)) {
-    throw new Error('Missing Supabase environment variables')
-  }
-
-  return createClient(supabaseUrl || '', supabaseAnonKey || '', {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-    }
-  })
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error(
+    'Missing Supabase environment variables. Please check your .env file and ensure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set.'
+  )
 }
 
-// Mock Supabase implementation
-const createMockSupabase = () => ({
+console.log('🔌 Supabase Connected:', supabaseUrl)
+
+// Create Supabase client
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    signUp: async ({ email, password, options }) => {
-      const newUser = {
-        id: `user-${Date.now()}`,
-        email,
-        ...options?.data,
-        password
-      }
-      
-      console.log('New user would be created:', newUser)
-      
-      return { 
-        data: { user: newUser }, 
-        error: null 
-      }
-    },
-
-    signInWithPassword: async ({ email, password }) => {
-      try {
-        const { user } = await api.login(email, password)
-        const rememberMe = localStorage.getItem('insurax_remember_me') !== 'false'
-        
-        if (rememberMe) {
-          localAuth.setUser(user)
-          localAuth.setToken(`mock-token-${user.id}`)
-        } else {
-          sessionStorage.setItem('insurax_user', JSON.stringify(user))
-          sessionStorage.setItem('insurax_token', `mock-token-${user.id}`)
-        }
-        
-        return {
-          data: { user, session: { user, access_token: `mock-token-${user.id}` } },
-          error: null
-        }
-      } catch (error) {
-        return {
-          data: null,
-          error: { message: error.message }
-        }
-      }
-    },
-
-    signOut: async () => {
-      localAuth.removeUser()
-      localAuth.removeToken()
-      sessionStorage.removeItem('insurax_user')
-      sessionStorage.removeItem('insurax_token')
-      return { error: null }
-    },
-
-    getUser: async () => {
-      const rememberMe = localStorage.getItem('insurax_remember_me') !== 'false'
-      let user = null
-      
-      if (!rememberMe) {
-        const sessionUser = sessionStorage.getItem('insurax_user')
-        if (sessionUser) {
-          user = JSON.parse(sessionUser)
-        }
-      } else {
-        user = localAuth.getUser()
-      }
-      
-      return { data: { user }, error: null }
-    },
-
-    onAuthStateChange: (callback) => {
-      const rememberMe = localStorage.getItem('insurax_remember_me') !== 'false'
-      let user = null
-      
-      if (!rememberMe) {
-        const sessionUser = sessionStorage.getItem('insurax_user')
-        if (sessionUser) {
-          user = JSON.parse(sessionUser)
-        }
-      } else {
-        user = localAuth.getUser()
-      }
-      
-      if (user) {
-        callback('SIGNED_IN', { user })
-      }
-
-      return {
-        data: {
-          subscription: {
-            unsubscribe: () => {}
-          }
-        }
-      }
-    }
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storage: window.localStorage,
+    storageKey: 'insurax-auth-token'
   }
 })
 
-// Create the appropriate client
-export const supabase = USE_MOCK_API ? createMockSupabase() : createRealSupabase()
-
-// Helper functions that work with both implementations
+// Helper functions for common operations
 export const supabaseHelpers = {
-  signUp: async (email, password, metadata) => {
-    if (USE_MOCK_API) {
-      return supabase.auth.signUp({ email, password, options: { data: metadata } })
-    } else {
-      return supabase.auth.signUp({ email, password, options: { data: metadata } })
-    }
+  // Auth helpers
+  async signUp(email, password, metadata = {}) {
+    console.log('📝 SignUp called with:', email, metadata)
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: metadata
+      }
+    })
+    console.log('SignUp result:', { success: !error, userId: data?.user?.id })
+    return { data, error }
   },
 
-  signIn: async (email, password, rememberMe = true) => {
-    // Store remember preference before sign in
-    localStorage.setItem('insurax_remember_me', rememberMe ? 'true' : 'false')
+  async signIn(email, password) {
+    console.log('🔐 SignIn called with:', email)
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    })
+    console.log('SignIn result:', { 
+      success: !error, 
+      userId: data?.user?.id,
+      session: !!data?.session 
+    })
+    return { data, error }
+  },
+
+  async signOut() {
+    console.log('👋 Signing out...')
+    const { error } = await supabase.auth.signOut()
+    return { error }
+  },
+
+  async getUser() {
+    const { data, error } = await supabase.auth.getUser()
+    return { data, error }
+  },
+
+  async getSession() {
+    const { data, error } = await supabase.auth.getSession()
+    return { data, error }
+  },
+
+  // Profile helpers
+  async getProfile(userId) {
+    console.log('👤 Getting profile for user:', userId)
     
-    if (USE_MOCK_API) {
-      // For real Supabase, we might need to configure session persistence differently
-      // But the auth state change listener will handle it
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single()
+    
+    if (error && error.code === 'PGRST116') {
+      console.log('⚠️ No profile found for user')
+      return { data: null, error: null } // Return null instead of error for missing profile
     }
     
-    return supabase.auth.signInWithPassword({ email, password })
+    return { data, error }
   },
 
-  signOut: async () => {
-    // Clear remember preference on sign out
-    localStorage.removeItem('insurax_remember_me')
-    return supabase.auth.signOut()
+  async createProfile(profileData) {
+    console.log('✨ Creating profile:', profileData)
+    const { data, error } = await supabase
+      .from('profiles')
+      .insert([profileData])
+      .select()
+      .single()
+    
+    return { data, error }
   },
 
-  getUser: async () => {
-    return supabase.auth.getUser()
+  async updateProfile(userId, updates) {
+    console.log('📝 Updating profile:', userId, updates)
+    const { data, error } = await supabase
+      .from('profiles')
+      .update(updates)
+      .eq('id', userId)
+      .select()
+      .single()
+    
+    return { data, error }
   },
 
-  getProfile: async (userId) => {
-    if (USE_MOCK_API) {
-      try {
-        const user = await api.getUser(userId)
-        return { data: user, error: null }
-      } catch (error) {
-        return { data: null, error }
-      }
-    } else {
-      // Real Supabase implementation
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single()
-      
-      return { data, error }
+  // Claims helpers
+  async getClaims(filters = {}) {
+    let query = supabase.from('claims').select('*')
+    
+    if (filters.customer_id) {
+      query = query.eq('customer_id', filters.customer_id)
     }
+    
+    if (filters.insurer_id) {
+      query = query.eq('insurer_id', filters.insurer_id)
+    }
+    
+    if (filters.status) {
+      query = query.eq('status', filters.status)
+    }
+    
+    query = query.order('created_at', { ascending: false })
+    
+    const { data, error } = await query
+    return { data: data || [], error }
   },
 
-  updateProfile: async (userId, updates) => {
-    if (USE_MOCK_API) {
-      try {
-        const user = await api.updateUser(userId, updates)
-        return { data: user, error: null }
-      } catch (error) {
-        return { data: null, error }
-      }
-    } else {
-      const { data, error } = await supabase
-        .from('profiles')
-        .update(updates)
-        .eq('id', userId)
-        .select()
-        .single()
-      
-      return { data, error }
-    }
+  async getClaim(claimId) {
+    const { data, error } = await supabase
+      .from('claims')
+      .select('*')
+      .eq('id', claimId)
+      .single()
+    
+    return { data, error }
   },
 
-  getClaims: async (filters = {}) => {
-    if (USE_MOCK_API) {
-      try {
-        const claims = await api.getClaims(filters.customer_id)
-        return { data: claims, error: null }
-      } catch (error) {
-        return { data: null, error }
-      }
-    } else {
-      let query = supabase.from('claims').select('*')
-      
-      if (filters.customer_id) {
-        query = query.eq('customer_id', filters.customer_id)
-      }
-      
-      if (filters.status) {
-        query = query.eq('status', filters.status)
-      }
-      
-      query = query.order('created_at', { ascending: false })
-      
-      const { data, error } = await query
-      return { data, error }
-    }
+  async createClaim(claimData) {
+    const { data, error } = await supabase
+      .from('claims')
+      .insert([claimData])
+      .select()
+      .single()
+    
+    return { data, error }
   },
 
-  createClaim: async (claimData) => {
-    if (USE_MOCK_API) {
-      try {
-        const claim = await api.createClaim(claimData)
-        return { data: claim, error: null }
-      } catch (error) {
-        return { data: null, error }
-      }
-    } else {
-      const { data, error } = await supabase
-        .from('claims')
-        .insert([claimData])
-        .select()
-        .single()
-      
-      return { data, error }
-    }
+  async updateClaim(claimId, updates) {
+    const { data, error } = await supabase
+      .from('claims')
+      .update(updates)
+      .eq('id', claimId)
+      .select()
+      .single()
+    
+    return { data, error }
   },
 
-  uploadFile: async (bucket, path, file) => {
-    if (USE_MOCK_API) {
-      const fakeUrl = `http://localhost:3001/uploads/${path}`
-      return { data: { path: fakeUrl }, error: null }
-    } else {
-      const { data, error } = await supabase.storage
-        .from(bucket)
-        .upload(path, file)
-      
-      return { data, error }
+  // Payments helpers
+  async getPayments(filters = {}) {
+    let query = supabase.from('payments').select('*')
+    
+    if (filters.customer_id) {
+      query = query.eq('customer_id', filters.customer_id)
     }
+    
+    if (filters.claim_id) {
+      query = query.eq('claim_id', filters.claim_id)
+    }
+    
+    query = query.order('created_at', { ascending: false })
+    
+    const { data, error } = await query
+    return { data: data || [], error }
   },
 
-  getFileUrl: (bucket, path) => {
-    if (USE_MOCK_API) {
-      return path
-    } else {
-      const { data } = supabase.storage
-        .from(bucket)
-        .getPublicUrl(path)
-      return data.publicUrl
-    }
+  async createPayment(paymentData) {
+    const { data, error } = await supabase
+      .from('payments')
+      .insert([paymentData])
+      .select()
+      .single()
+    
+    return { data, error }
+  },
+
+  // File storage helpers
+  async uploadFile(bucket, path, file) {
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .upload(path, file, {
+        upsert: false,
+        cacheControl: '3600'
+      })
+    
+    return { data, error }
+  },
+
+  async getFileUrl(bucket, path) {
+    const { data } = supabase.storage
+      .from(bucket)
+      .getPublicUrl(path)
+    
+    return data.publicUrl
+  },
+
+  async deleteFile(bucket, paths) {
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .remove(paths)
+    
+    return { data, error }
+  },
+
+  // Customer helpers for insurers
+  async getCustomers() {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('role', 'customer')
+      .order('created_at', { ascending: false })
+    
+    return { data: data || [], error }
+  },
+
+  // Notification helpers
+  async getNotifications(userId) {
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+    
+    return { data: data || [], error }
+  },
+
+  async markNotificationRead(notificationId) {
+    const { data, error } = await supabase
+      .from('notifications')
+      .update({ read: true })
+      .eq('id', notificationId)
+    
+    return { data, error }
   }
 }
+
+// Export default for backward compatibility
+export default supabase

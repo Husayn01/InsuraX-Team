@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import { supabase } from '@services/supabase'
+import { supabase, supabaseHelpers } from '@services/supabase'
 import { useAuth } from './AuthContext'
 
 const NotificationContext = createContext({})
@@ -18,128 +18,74 @@ export const NotificationProvider = ({ children }) => {
   const [unreadCount, setUnreadCount] = useState(0)
   const [loading, setLoading] = useState(true)
 
-  // Mock notifications for demo
-  const mockNotifications = [
-    {
-      id: '1',
-      type: 'claim_update',
-      title: 'Claim Status Updated',
-      message: 'Your claim #CLM-2024-001 has been approved',
-      read: false,
-      createdAt: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
-      icon: 'CheckCircle',
-      iconColor: 'text-green-400',
-      link: '/customer/claims/1'
-    },
-    {
-      id: '2',
-      type: 'payment_reminder',
-      title: 'Payment Due Soon',
-      message: 'Your monthly premium payment is due in 3 days',
-      read: false,
-      createdAt: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-      icon: 'CreditCard',
-      iconColor: 'text-yellow-400',
-      link: '/customer/payments'
-    },
-    {
-      id: '3',
-      type: 'document_request',
-      title: 'Document Required',
-      message: 'Please upload additional documents for claim #CLM-2024-002',
-      read: true,
-      createdAt: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
-      icon: 'FileText',
-      iconColor: 'text-blue-400',
-      link: '/customer/claims/2'
-    },
-    {
-      id: '4',
-      type: 'system',
-      title: 'Welcome to InsuraX!',
-      message: 'Thank you for joining us. Complete your profile to get started.',
-      read: true,
-      createdAt: new Date(Date.now() - 604800000).toISOString(), // 1 week ago
-      icon: 'Sparkles',
-      iconColor: 'text-purple-400',
-      link: '/customer/profile'
-    }
-  ]
-
   useEffect(() => {
     if (user) {
       fetchNotifications()
-      // Set up real-time subscription for new notifications
-      subscribeToNotifications()
+      
+      // Set up real-time subscription for notifications
+      const subscription = supabase
+        .channel('notifications')
+        .on('postgres_changes', 
+          { 
+            event: 'INSERT', 
+            schema: 'public', 
+            table: 'notifications',
+            filter: `user_id=eq.${user.id}`
+          }, 
+          handleNewNotification
+        )
+        .subscribe()
+
+      return () => {
+        subscription.unsubscribe()
+      }
+    } else {
+      setNotifications([])
+      setUnreadCount(0)
+      setLoading(false)
     }
   }, [user])
 
   const fetchNotifications = async () => {
     try {
       setLoading(true)
-      // In a real app, fetch from database
-      // For demo, use mock data
-      setNotifications(mockNotifications)
-      updateUnreadCount(mockNotifications)
+      const { data, error } = await supabaseHelpers.getNotifications(user.id)
+      
+      if (error) {
+        console.error('Error fetching notifications:', error)
+        // If notifications table doesn't exist, use empty array
+        setNotifications([])
+      } else {
+        setNotifications(data || [])
+        setUnreadCount(data?.filter(n => !n.read).length || 0)
+      }
     } catch (error) {
-      console.error('Error fetching notifications:', error)
+      console.error('Error in fetchNotifications:', error)
+      setNotifications([])
     } finally {
       setLoading(false)
     }
   }
 
-  const subscribeToNotifications = () => {
-    // In a real app, set up Supabase real-time subscription
-    // For demo, simulate real-time updates
-    const interval = setInterval(() => {
-      // Randomly add a new notification every 30 seconds for demo
-      if (Math.random() > 0.7) {
-        addNewNotification()
-      }
-    }, 30000)
-
-    return () => clearInterval(interval)
-  }
-
-  const addNewNotification = () => {
-    const newNotification = {
-      id: Date.now().toString(),
-      type: 'claim_update',
-      title: 'New Update',
-      message: 'You have a new update on your claim',
-      read: false,
-      createdAt: new Date().toISOString(),
-      icon: 'Bell',
-      iconColor: 'text-cyan-400',
-      link: '/customer/claims'
-    }
-
+  const handleNewNotification = (payload) => {
+    console.log('New notification:', payload)
+    const newNotification = payload.new
     setNotifications(prev => [newNotification, ...prev])
-    setUnreadCount(prev => prev + 1)
-    
-    // Show browser notification if permitted
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification(newNotification.title, {
-        body: newNotification.message,
-        icon: '/icon.png'
-      })
+    if (!newNotification.read) {
+      setUnreadCount(prev => prev + 1)
     }
-  }
-
-  const updateUnreadCount = (notificationsList) => {
-    const unread = notificationsList.filter(n => !n.read).length
-    setUnreadCount(unread)
   }
 
   const markAsRead = async (notificationId) => {
     try {
-      // In a real app, update in database
-      setNotifications(prev => 
-        prev.map(n => 
-          n.id === notificationId ? { ...n, read: true } : n
+      const { error } = await supabaseHelpers.markNotificationRead(notificationId)
+      
+      if (!error) {
+        setNotifications(prev => 
+          prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
         )
-      )
-      setUnreadCount(prev => Math.max(0, prev - 1))
+        setUnreadCount(prev => Math.max(0, prev - 1))
+      }
     } catch (error) {
       console.error('Error marking notification as read:', error)
     }
@@ -147,11 +93,19 @@ export const NotificationProvider = ({ children }) => {
 
   const markAllAsRead = async () => {
     try {
-      // In a real app, update all in database
-      setNotifications(prev => 
-        prev.map(n => ({ ...n, read: true }))
-      )
-      setUnreadCount(0)
+      const unreadIds = notifications.filter(n => !n.read).map(n => n.id)
+      
+      if (unreadIds.length > 0) {
+        const { error } = await supabase
+          .from('notifications')
+          .update({ read: true })
+          .in('id', unreadIds)
+        
+        if (!error) {
+          setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+          setUnreadCount(0)
+        }
+      }
     } catch (error) {
       console.error('Error marking all as read:', error)
     }
@@ -159,12 +113,17 @@ export const NotificationProvider = ({ children }) => {
 
   const deleteNotification = async (notificationId) => {
     try {
-      // In a real app, delete from database
-      setNotifications(prev => prev.filter(n => n.id !== notificationId))
-      // Update unread count if needed
-      const notification = notifications.find(n => n.id === notificationId)
-      if (notification && !notification.read) {
-        setUnreadCount(prev => Math.max(0, prev - 1))
+      const { error } = await supabase
+        .from('notifications')
+        .delete()
+        .eq('id', notificationId)
+      
+      if (!error) {
+        setNotifications(prev => prev.filter(n => n.id !== notificationId))
+        const notification = notifications.find(n => n.id === notificationId)
+        if (notification && !notification.read) {
+          setUnreadCount(prev => Math.max(0, prev - 1))
+        }
       }
     } catch (error) {
       console.error('Error deleting notification:', error)
@@ -173,20 +132,18 @@ export const NotificationProvider = ({ children }) => {
 
   const clearAll = async () => {
     try {
-      // In a real app, clear from database
-      setNotifications([])
-      setUnreadCount(0)
+      const { error } = await supabase
+        .from('notifications')
+        .delete()
+        .eq('user_id', user.id)
+      
+      if (!error) {
+        setNotifications([])
+        setUnreadCount(0)
+      }
     } catch (error) {
       console.error('Error clearing notifications:', error)
     }
-  }
-
-  const requestPermission = async () => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      const permission = await Notification.requestPermission()
-      return permission === 'granted'
-    }
-    return false
   }
 
   const value = {
@@ -197,8 +154,7 @@ export const NotificationProvider = ({ children }) => {
     markAllAsRead,
     deleteNotification,
     clearAll,
-    requestPermission,
-    addNewNotification // For demo purposes
+    refresh: fetchNotifications
   }
 
   return (

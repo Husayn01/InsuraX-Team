@@ -30,13 +30,6 @@ import { NeuroClaimPage } from '@features/neuroclaim/NeuroClaimPage'
 const ProtectedRoute = ({ children, allowedRole }) => {
   const { user, profile, loading } = useAuth()
   
-  // Add a bypass for development if database is not set up
-  const BYPASS_AUTH = import.meta.env.VITE_BYPASS_AUTH === 'true'
-  
-  if (BYPASS_AUTH) {
-    return children
-  }
-  
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-900">
@@ -60,7 +53,18 @@ const ProtectedRoute = ({ children, allowedRole }) => {
 }
 
 const AppRoutes = () => {
-  const { profile } = useAuth()
+  const { profile, loading } = useAuth()
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-500 mx-auto"></div>
+          <p className="mt-4 text-gray-400">Loading...</p>
+        </div>
+      </div>
+    )
+  }
   
   return (
     <Routes>
@@ -106,7 +110,9 @@ const AppRoutes = () => {
       <Route path="*" element={
         profile?.role === 'insurer' 
           ? <Navigate to="/insurer/dashboard" replace />
-          : <Navigate to="/customer/dashboard" replace />
+          : profile?.role === 'customer'
+          ? <Navigate to="/customer/dashboard" replace />
+          : <Navigate to="/" replace />
       } />
     </Routes>
   )

@@ -13,7 +13,7 @@ const LandingPage = () => {
   const [scrolled, setScrolled] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [activeTestimonial, setActiveTestimonial] = useState(0)
-  const { user, profile, signOut } = useAuth()
+  const { user, profile, signOut, isAuthenticated } = useAuth()
   const navigate = useNavigate()
 
   useEffect(() => {

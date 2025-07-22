@@ -7,7 +7,6 @@ import { Button, Input, Alert } from '@shared/components'
 export const Login = () => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [rememberMe, setRememberMe] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   
@@ -23,7 +22,7 @@ export const Login = () => {
     setLoading(true)
 
     try {
-      const result = await signIn(email, password, rememberMe)
+      const result = await signIn(email, password)
       
       if (!result.success) {
         setError(result.error || 'Failed to sign in')
@@ -31,7 +30,7 @@ export const Login = () => {
         return
       }
       
-      // Set loading to false on success as well
+      // Navigation is handled by AuthContext after successful sign in
       setLoading(false)
     } catch (err) {
       setError('An unexpected error occurred')
@@ -124,16 +123,7 @@ export const Login = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-between">
-                <label className="flex items-center">
-                  <input 
-                    type="checkbox" 
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                    className="rounded border-gray-600 bg-gray-700 text-cyan-500 focus:ring-cyan-500" 
-                  />
-                  <span className="ml-2 text-sm text-gray-400">Remember me</span>
-                </label>
+              <div className="flex items-center justify-end">
                 <Link to="/forgot-password" className="text-sm text-cyan-400 hover:text-cyan-300">
                   Forgot password?
                 </Link>
