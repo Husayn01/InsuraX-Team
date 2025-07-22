@@ -1,17 +1,20 @@
 import React, { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { 
   Shield, Brain, Zap, CreditCard, FileText, 
   ChevronRight, Check, ArrowRight, Play,
   Users, TrendingUp, Clock, Lock, Globe,
-  Smartphone, Star, Menu, X
+  Smartphone, Star, Menu, X, LogOut
 } from 'lucide-react'
 import { Button } from '@shared/components'
+import { useAuth } from '@contexts/AuthContext'
 
 const LandingPage = () => {
   const [scrolled, setScrolled] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [activeTestimonial, setActiveTestimonial] = useState(0)
+  const { user, profile, signOut } = useAuth()
+  const navigate = useNavigate()
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20)
@@ -25,6 +28,11 @@ const LandingPage = () => {
     }, 5000)
     return () => clearInterval(interval)
   }, [])
+
+  const handleSignOut = async () => {
+    await signOut()
+    navigate('/')
+  }
 
   const features = [
     {
@@ -108,16 +116,36 @@ const LandingPage = () => {
               <a href="#features" className="hover:text-cyan-400 transition-colors">Features</a>
               <a href="#how-it-works" className="hover:text-cyan-400 transition-colors">How it Works</a>
               <a href="#testimonials" className="hover:text-cyan-400 transition-colors">Testimonials</a>
-              <Link to="/login">
-                <Button variant="ghost" className="text-white hover:text-cyan-400">
-                  Login
-                </Button>
-              </Link>
-              <Link to="/signup">
-                <Button className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700">
-                  Get Started
-                </Button>
-              </Link>
+              
+              {user ? (
+                <>
+                  <Link to={profile?.role === 'insurer' ? '/insurer/dashboard' : '/customer/dashboard'}>
+                    <Button variant="ghost" className="text-white hover:text-cyan-400">
+                      Dashboard
+                    </Button>
+                  </Link>
+                  <Button 
+                    onClick={handleSignOut}
+                    className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700"
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Logout
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Link to="/login">
+                    <Button variant="ghost" className="text-white hover:text-cyan-400">
+                      Login
+                    </Button>
+                  </Link>
+                  <Link to="/signup">
+                    <Button className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700">
+                      Get Started
+                    </Button>
+                  </Link>
+                </>
+              )}
             </div>
 
             {/* Mobile Menu Button */}
@@ -137,16 +165,36 @@ const LandingPage = () => {
               <a href="#features" className="block hover:text-cyan-400 transition-colors">Features</a>
               <a href="#how-it-works" className="block hover:text-cyan-400 transition-colors">How it Works</a>
               <a href="#testimonials" className="block hover:text-cyan-400 transition-colors">Testimonials</a>
-              <Link to="/login" className="block">
-                <Button variant="ghost" className="w-full text-white hover:text-cyan-400">
-                  Login
-                </Button>
-              </Link>
-              <Link to="/signup" className="block">
-                <Button className="w-full bg-gradient-to-r from-cyan-500 to-blue-600">
-                  Get Started
-                </Button>
-              </Link>
+              
+              {user ? (
+                <>
+                  <Link to={profile?.role === 'insurer' ? '/insurer/dashboard' : '/customer/dashboard'} className="block">
+                    <Button variant="ghost" className="w-full text-white hover:text-cyan-400">
+                      Dashboard
+                    </Button>
+                  </Link>
+                  <Button 
+                    onClick={handleSignOut}
+                    className="w-full bg-gradient-to-r from-red-500 to-red-600"
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Logout
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Link to="/login" className="block">
+                    <Button variant="ghost" className="w-full text-white hover:text-cyan-400">
+                      Login
+                    </Button>
+                  </Link>
+                  <Link to="/signup" className="block">
+                    <Button className="w-full bg-gradient-to-r from-cyan-500 to-blue-600">
+                      Get Started
+                    </Button>
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -166,99 +214,55 @@ const LandingPage = () => {
               Revolutionary AI-powered claim processing and universal payment gateway. 
               Get claims approved in seconds, not weeks.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-              <Link to="/signup">
-                <Button size="lg" className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 transform hover:scale-105 transition-all duration-300 shadow-xl">
-                  Start Free Trial
-                  <ArrowRight className="ml-2 w-5 h-5" />
-                </Button>
-              </Link>
-              <Button size="lg" variant="ghost" className="border border-gray-600 hover:border-cyan-400 group">
-                <Play className="mr-2 w-5 h-5 group-hover:text-cyan-400" />
-                Watch Demo
-              </Button>
-            </div>
-
-            {/* Trust Badges */}
-            <div className="flex flex-wrap items-center justify-center gap-8 text-gray-400">
-              <div className="flex items-center gap-2">
-                <Lock className="w-5 h-5" />
-                <span>Bank-grade Security</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Globe className="w-5 h-5" />
-                <span>Available Worldwide</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Smartphone className="w-5 h-5" />
-                <span>Mobile Ready</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Interactive Demo Preview */}
-          <div className="relative max-w-5xl mx-auto">
-            <div className="relative rounded-2xl overflow-hidden shadow-2xl bg-gradient-to-br from-gray-800 to-gray-900 p-1">
-              <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-600 animate-gradient-x"></div>
-              <div className="relative bg-gray-900 rounded-xl p-8">
-                <div className="grid md:grid-cols-2 gap-8">
-                  <div className="space-y-4">
-                    <div className="bg-gray-800 rounded-lg p-4 transform hover:scale-105 transition-all duration-300">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="w-10 h-10 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center">
-                          <FileText className="w-6 h-6" />
-                        </div>
-                        <h3 className="font-semibold">Submit Claim</h3>
-                      </div>
-                      <p className="text-sm text-gray-400">Upload documents and AI processes instantly</p>
-                    </div>
-                    <div className="bg-gray-800 rounded-lg p-4 transform hover:scale-105 transition-all duration-300">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-pink-600 rounded-lg flex items-center justify-center">
-                          <Brain className="w-6 h-6" />
-                        </div>
-                        <h3 className="font-semibold">AI Analysis</h3>
-                      </div>
-                      <p className="text-sm text-gray-400">NeuroClaim AI detects fraud and validates claims</p>
-                    </div>
-                    <div className="bg-gray-800 rounded-lg p-4 transform hover:scale-105 transition-all duration-300">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg flex items-center justify-center">
-                          <Zap className="w-6 h-6" />
-                        </div>
-                        <h3 className="font-semibold">Instant Payout</h3>
-                      </div>
-                      <p className="text-sm text-gray-400">Approved claims paid out immediately</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-center">
-                    <div className="relative">
-                      <div className="w-48 h-48 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-full animate-pulse-slow"></div>
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <Brain className="w-24 h-24 text-white animate-float" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              {user ? (
+                <Link to={profile?.role === 'insurer' ? '/insurer/dashboard' : '/customer/dashboard'}>
+                  <Button 
+                    size="lg" 
+                    className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-cyan-500/25"
+                  >
+                    Go to Dashboard
+                    <ArrowRight className="w-5 h-5 ml-2" />
+                  </Button>
+                </Link>
+              ) : (
+                <>
+                  <Link to="/signup">
+                    <Button 
+                      size="lg" 
+                      className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-cyan-500/25"
+                    >
+                      Get Started
+                      <ArrowRight className="w-5 h-5 ml-2" />
+                    </Button>
+                  </Link>
+                  <Link to="/login">
+                    <Button 
+                      size="lg" 
+                      variant="secondary"
+                      className="bg-gray-800/50 backdrop-blur-sm border border-gray-600 hover:bg-gray-700/50 transform hover:scale-105 transition-all duration-300"
+                    >
+                      <Play className="w-5 h-5 mr-2" />
+                      Watch Demo
+                    </Button>
+                  </Link>
+                </>
+              )}
             </div>
           </div>
-        </div>
-      </section>
 
-      {/* Stats Section */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gray-800/50">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+          {/* Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto">
             {stats.map((stat, index) => (
-              <div key={index} className="text-center group">
-                <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-full mb-4 group-hover:scale-110 transition-transform duration-300">
-                  <stat.icon className="w-8 h-8" />
-                </div>
-                <div className="text-4xl font-bold mb-2 bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+              <div 
+                key={index}
+                className="text-center p-6 bg-gray-800/30 backdrop-blur-sm rounded-2xl border border-gray-700 hover:border-cyan-500/50 transition-all duration-300"
+              >
+                <stat.icon className="w-8 h-8 text-cyan-400 mx-auto mb-2" />
+                <div className="text-3xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
                   {stat.value}
                 </div>
-                <div className="text-gray-400">{stat.label}</div>
+                <div className="text-gray-400 text-sm mt-1">{stat.label}</div>
               </div>
             ))}
           </div>
@@ -270,8 +274,7 @@ const LandingPage = () => {
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-4xl md:text-5xl font-bold mb-4">
-              Powerful Features for
-              <span className="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent"> Everyone</span>
+              Powerful Features
             </h2>
             <p className="text-xl text-gray-400">Everything you need to modernize insurance operations</p>
           </div>
@@ -321,22 +324,21 @@ const LandingPage = () => {
               {
                 step: '3',
                 title: 'Get Paid',
-                description: 'Instant payouts for approved claims via your preferred method',
+                description: 'Instant payouts upon approval through multiple channels',
                 icon: CreditCard
               }
             ].map((item, index) => (
               <div key={index} className="relative">
-                <div className="text-center">
-                  <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-full mb-6">
-                    <span className="text-3xl font-bold">{item.step}</span>
+                <div className="bg-gray-800 rounded-2xl p-8 hover:bg-gray-700 transition-all duration-300">
+                  <div className="absolute -top-4 -left-4 w-12 h-12 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-full flex items-center justify-center text-xl font-bold">
+                    {item.step}
                   </div>
-                  <h3 className="text-2xl font-semibold mb-4">{item.title}</h3>
+                  <item.icon className="w-12 h-12 text-cyan-400 mb-4" />
+                  <h3 className="text-2xl font-semibold mb-2">{item.title}</h3>
                   <p className="text-gray-400">{item.description}</p>
                 </div>
                 {index < 2 && (
-                  <div className="hidden md:block absolute top-10 right-0 transform translate-x-1/2">
-                    <ChevronRight className="w-8 h-8 text-gray-600" />
-                  </div>
+                  <ChevronRight className="hidden md:block absolute top-1/2 -right-4 transform -translate-y-1/2 text-gray-600 w-8 h-8" />
                 )}
               </div>
             ))}
@@ -346,51 +348,51 @@ const LandingPage = () => {
 
       {/* Testimonials */}
       <section id="testimonials" className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
+        <div className="max-w-4xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-4xl md:text-5xl font-bold mb-4">
-              Loved by Thousands
+              What Our Users Say
             </h2>
-            <p className="text-xl text-gray-400">See what our users have to say</p>
+            <p className="text-xl text-gray-400">Trusted by thousands of customers and insurers</p>
           </div>
 
-          <div className="relative max-w-4xl mx-auto">
-            <div className="bg-gray-800 rounded-2xl p-8 md:p-12">
-              {testimonials.map((testimonial, index) => (
-                <div
-                  key={index}
-                  className={`transition-all duration-500 ${
-                    index === activeTestimonial ? 'opacity-100' : 'opacity-0 absolute inset-0'
-                  }`}
-                >
-                  <div className="flex flex-col items-center text-center">
-                    <img
-                      src={testimonial.image}
-                      alt={testimonial.name}
-                      className="w-20 h-20 rounded-full mb-6"
-                    />
-                    <p className="text-xl md:text-2xl mb-6 text-gray-300">
-                      "{testimonial.content}"
-                    </p>
-                    <div>
-                      <p className="font-semibold">{testimonial.name}</p>
-                      <p className="text-gray-400">{testimonial.role}</p>
-                    </div>
-                  </div>
+          <div className="relative bg-gray-800 rounded-2xl p-8 md:p-12">
+            <div className="absolute -top-4 left-8">
+              <div className="text-6xl text-cyan-500 opacity-50">"</div>
+            </div>
+            
+            <div className="text-center">
+              <p className="text-xl md:text-2xl text-gray-300 mb-8 italic">
+                {testimonials[activeTestimonial].content}
+              </p>
+              
+              <div className="flex items-center justify-center gap-4">
+                <img
+                  src={testimonials[activeTestimonial].image}
+                  alt={testimonials[activeTestimonial].name}
+                  className="w-16 h-16 rounded-full"
+                />
+                <div className="text-left">
+                  <p className="font-semibold text-gray-100">
+                    {testimonials[activeTestimonial].name}
+                  </p>
+                  <p className="text-sm text-gray-400">
+                    {testimonials[activeTestimonial].role}
+                  </p>
                 </div>
-              ))}
-
-              {/* Dots */}
+              </div>
+              
+              {/* Dots indicator */}
               <div className="flex justify-center gap-2 mt-8">
                 {testimonials.map((_, index) => (
                   <button
                     key={index}
-                    onClick={() => setActiveTestimonial(index)}
                     className={`w-2 h-2 rounded-full transition-all duration-300 ${
                       index === activeTestimonial
-                        ? 'w-8 bg-cyan-500'
+                        ? 'bg-cyan-500 w-8'
                         : 'bg-gray-600 hover:bg-gray-500'
                     }`}
+                    onClick={() => setActiveTestimonial(index)}
                   />
                 ))}
               </div>
@@ -402,149 +404,85 @@ const LandingPage = () => {
       {/* CTA Section */}
       <section className="py-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-4xl md:text-5xl font-bold mb-6">
-            Ready to Transform Your
-            <span className="block bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-              Insurance Experience?
-            </span>
+          <h2 className="text-4xl md:text-5xl font-bold mb-4">
+            Ready to Transform Your Insurance Experience?
           </h2>
           <p className="text-xl text-gray-300 mb-8">
             Join thousands of users already benefiting from AI-powered insurance
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link to="/signup">
-              <Button size="lg" className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 transform hover:scale-105 transition-all duration-300 shadow-xl">
-                Get Started Free
-                <ArrowRight className="ml-2 w-5 h-5" />
+          {user ? (
+            <Link to={profile?.role === 'insurer' ? '/insurer/dashboard' : '/customer/dashboard'}>
+              <Button 
+                size="lg" 
+                className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-cyan-500/25"
+              >
+                Go to Dashboard
+                <ArrowRight className="w-5 h-5 ml-2" />
               </Button>
             </Link>
-            <Button size="lg" variant="ghost" className="border border-gray-600 hover:border-cyan-400">
-              Contact Sales
-            </Button>
-          </div>
-
-          {/* Features checklist */}
-          <div className="grid sm:grid-cols-2 gap-4 mt-12 max-w-2xl mx-auto text-left">
-            {[
-              'No credit card required',
-              '14-day free trial',
-              'Cancel anytime',
-              '24/7 support'
-            ].map((item, index) => (
-              <div key={index} className="flex items-center gap-3 text-gray-300">
-                <Check className="w-5 h-5 text-cyan-400" />
-                <span>{item}</span>
-              </div>
-            ))}
-          </div>
+          ) : (
+            <Link to="/signup">
+              <Button 
+                size="lg" 
+                className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-cyan-500/25"
+              >
+                Start Free Trial
+                <ArrowRight className="w-5 h-5 ml-2" />
+              </Button>
+            </Link>
+          )}
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-gray-800 py-12 px-4 sm:px-6 lg:px-8">
+      <footer className="bg-gray-900 border-t border-gray-800 py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <div className="grid md:grid-cols-4 gap-8">
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <Shield className="w-8 h-8 text-cyan-400" />
-                <span className="text-xl font-bold">InsuraX</span>
+                <span className="text-xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+                  InsuraX
+                </span>
               </div>
-              <p className="text-gray-400">
-                Revolutionizing insurance with AI
+              <p className="text-gray-400 text-sm">
+                AI-powered insurance platform revolutionizing claim processing and payments.
               </p>
             </div>
+            
             <div>
-              <h4 className="font-semibold mb-4">Product</h4>
-              <ul className="space-y-2 text-gray-400">
-                <li><a href="#" className="hover:text-cyan-400 transition-colors">Features</a></li>
+              <h3 className="font-semibold mb-4">Product</h3>
+              <ul className="space-y-2 text-sm text-gray-400">
+                <li><a href="#features" className="hover:text-cyan-400 transition-colors">Features</a></li>
                 <li><a href="#" className="hover:text-cyan-400 transition-colors">Pricing</a></li>
                 <li><a href="#" className="hover:text-cyan-400 transition-colors">API</a></li>
               </ul>
             </div>
+            
             <div>
-              <h4 className="font-semibold mb-4">Company</h4>
-              <ul className="space-y-2 text-gray-400">
+              <h3 className="font-semibold mb-4">Company</h3>
+              <ul className="space-y-2 text-sm text-gray-400">
                 <li><a href="#" className="hover:text-cyan-400 transition-colors">About</a></li>
                 <li><a href="#" className="hover:text-cyan-400 transition-colors">Blog</a></li>
                 <li><a href="#" className="hover:text-cyan-400 transition-colors">Careers</a></li>
               </ul>
             </div>
+            
             <div>
-              <h4 className="font-semibold mb-4">Support</h4>
-              <ul className="space-y-2 text-gray-400">
-                <li><a href="#" className="hover:text-cyan-400 transition-colors">Help Center</a></li>
-                <li><a href="#" className="hover:text-cyan-400 transition-colors">Contact</a></li>
-                <li><a href="#" className="hover:text-cyan-400 transition-colors">Status</a></li>
+              <h3 className="font-semibold mb-4">Legal</h3>
+              <ul className="space-y-2 text-sm text-gray-400">
+                <li><a href="#" className="hover:text-cyan-400 transition-colors">Privacy</a></li>
+                <li><a href="#" className="hover:text-cyan-400 transition-colors">Terms</a></li>
+                <li><a href="#" className="hover:text-cyan-400 transition-colors">Security</a></li>
               </ul>
             </div>
           </div>
-          <div className="border-t border-gray-800 mt-12 pt-8 text-center text-gray-400">
+          
+          <div className="mt-12 pt-8 border-t border-gray-800 text-center text-sm text-gray-400">
             <p>&copy; 2024 InsuraX. All rights reserved.</p>
           </div>
         </div>
       </footer>
-
-      <style>{`
-        @keyframes blob {
-          0% {
-            transform: translate(0px, 0px) scale(1);
-          }
-          33% {
-            transform: translate(30px, -50px) scale(1.1);
-          }
-          66% {
-            transform: translate(-20px, 20px) scale(0.9);
-          }
-          100% {
-            transform: translate(0px, 0px) scale(1);
-          }
-        }
-        .animate-blob {
-          animation: blob 7s infinite;
-        }
-        .animation-delay-2000 {
-          animation-delay: 2s;
-        }
-        .animation-delay-4000 {
-          animation-delay: 4s;
-        }
-        @keyframes gradient-x {
-          0%, 100% {
-            transform: translateX(0%);
-          }
-          50% {
-            transform: translateX(100%);
-          }
-        }
-        .animate-gradient-x {
-          animation: gradient-x 3s ease infinite;
-          background-size: 200% 200%;
-        }
-        @keyframes float {
-          0%, 100% {
-            transform: translateY(0px);
-          }
-          50% {
-            transform: translateY(-20px);
-          }
-        }
-        .animate-float {
-          animation: float 3s ease-in-out infinite;
-        }
-        .animate-fade-in {
-          animation: fadeIn 1s ease-out;
-        }
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `}</style>
     </div>
   )
 }

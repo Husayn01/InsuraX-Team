@@ -7,6 +7,7 @@ import { Button, Input, Alert } from '@shared/components'
 export const Login = () => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberMe, setRememberMe] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   
@@ -22,7 +23,7 @@ export const Login = () => {
     setLoading(true)
 
     try {
-      const result = await signIn(email, password)
+      const result = await signIn(email, password, rememberMe)
       
       if (!result.success) {
         setError(result.error || 'Failed to sign in')
@@ -85,11 +86,8 @@ export const Login = () => {
 
       {/* Main Content */}
       <div className="relative min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md w-full animate-fade-in">
+        <div className="w-full max-w-md animate-fade-in">
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-2xl mb-4 animate-float">
-              <Shield className="w-8 h-8 text-white" />
-            </div>
             <h2 className="text-4xl font-bold mb-2">Welcome back</h2>
             <p className="text-gray-400">Sign in to your InsuraX account</p>
           </div>
@@ -128,7 +126,12 @@ export const Login = () => {
 
               <div className="flex items-center justify-between">
                 <label className="flex items-center">
-                  <input type="checkbox" className="rounded border-gray-600 bg-gray-700 text-cyan-500 focus:ring-cyan-500" />
+                  <input 
+                    type="checkbox" 
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="rounded border-gray-600 bg-gray-700 text-cyan-500 focus:ring-cyan-500" 
+                  />
                   <span className="ml-2 text-sm text-gray-400">Remember me</span>
                 </label>
                 <Link to="/forgot-password" className="text-sm text-cyan-400 hover:text-cyan-300">
@@ -143,18 +146,18 @@ export const Login = () => {
                 loading={loading}
                 disabled={loading}
               >
-                Sign in
+                Sign In
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             </form>
 
-            <div className="mt-8">
+            <div className="mt-6">
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-700"></div>
+                  <div className="w-full border-t border-gray-600"></div>
                 </div>
                 <div className="relative flex justify-center text-sm">
-                  <span className="px-4 bg-gray-800/50 text-gray-400">Or use demo account</span>
+                  <span className="bg-gray-800/50 px-4 text-gray-400">Or use demo account</span>
                 </div>
               </div>
 
@@ -162,8 +165,9 @@ export const Login = () => {
                 <Button
                   type="button"
                   variant="secondary"
+                  size="sm"
                   onClick={() => fillDemoCredentials('customer')}
-                  className="w-full bg-gray-700/50 hover:bg-gray-700 border-gray-600 hover:border-cyan-500 transition-all duration-300"
+                  className="bg-gray-700 hover:bg-gray-600 text-gray-300"
                 >
                   <Sparkles className="w-4 h-4 mr-2" />
                   Customer Demo
@@ -171,8 +175,9 @@ export const Login = () => {
                 <Button
                   type="button"
                   variant="secondary"
+                  size="sm"
                   onClick={() => fillDemoCredentials('insurer')}
-                  className="w-full bg-gray-700/50 hover:bg-gray-700 border-gray-600 hover:border-purple-500 transition-all duration-300"
+                  className="bg-gray-700 hover:bg-gray-600 text-gray-300"
                 >
                   <Sparkles className="w-4 h-4 mr-2" />
                   Insurer Demo
@@ -180,26 +185,15 @@ export const Login = () => {
               </div>
             </div>
 
-            <p className="mt-8 text-center text-sm text-gray-400">
+            <p className="mt-6 text-center text-sm text-gray-400">
               Don't have an account?{' '}
-              <Link to="/signup" className="font-medium text-cyan-400 hover:text-cyan-300">
-                Sign up
+              <Link to="/signup" className="text-cyan-400 hover:text-cyan-300 font-medium">
+                Create one now
               </Link>
             </p>
           </div>
         </div>
       </div>
-
-      <style>{`
-        .animation-delay-2000 {
-          animation-delay: 2s;
-        }
-        .animation-delay-4000 {
-          animation-delay: 4s;
-        }
-      `}</style>
     </div>
   )
 }
-
-export default Login

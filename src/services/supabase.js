@@ -46,11 +46,18 @@ const createMockSupabase = () => ({
     signInWithPassword: async ({ email, password }) => {
       try {
         const { user } = await api.login(email, password)
-        localAuth.setUser(user)
-        localAuth.setToken(`mock-token-${user.id}`)
+        const rememberMe = localStorage.getItem('insurax_remember_me') !== 'false'
+        
+        if (rememberMe) {
+          localAuth.setUser(user)
+          localAuth.setToken(`mock-token-${user.id}`)
+        } else {
+          sessionStorage.setItem('insurax_user', JSON.stringify(user))
+          sessionStorage.setItem('insurax_token', `mock-token-${user.id}`)
+        }
         
         return {
-          data: { user, session: { user } },
+          data: { user, session: { user, access_token: `mock-token-${user.id}` } },
           error: null
         }
       } catch (error) {
@@ -64,16 +71,40 @@ const createMockSupabase = () => ({
     signOut: async () => {
       localAuth.removeUser()
       localAuth.removeToken()
+      sessionStorage.removeItem('insurax_user')
+      sessionStorage.removeItem('insurax_token')
       return { error: null }
     },
 
     getUser: async () => {
-      const user = localAuth.getUser()
+      const rememberMe = localStorage.getItem('insurax_remember_me') !== 'false'
+      let user = null
+      
+      if (!rememberMe) {
+        const sessionUser = sessionStorage.getItem('insurax_user')
+        if (sessionUser) {
+          user = JSON.parse(sessionUser)
+        }
+      } else {
+        user = localAuth.getUser()
+      }
+      
       return { data: { user }, error: null }
     },
 
     onAuthStateChange: (callback) => {
-      const user = localAuth.getUser()
+      const rememberMe = localStorage.getItem('insurax_remember_me') !== 'false'
+      let user = null
+      
+      if (!rememberMe) {
+        const sessionUser = sessionStorage.getItem('insurax_user')
+        if (sessionUser) {
+          user = JSON.parse(sessionUser)
+        }
+      } else {
+        user = localAuth.getUser()
+      }
+      
       if (user) {
         callback('SIGNED_IN', { user })
       }
@@ -102,11 +133,21 @@ export const supabaseHelpers = {
     }
   },
 
-  signIn: async (email, password) => {
+  signIn: async (email, password, rememberMe = true) => {
+    // Store remember preference before sign in
+    localStorage.setItem('insurax_remember_me', rememberMe ? 'true' : 'false')
+    
+    if (USE_MOCK_API) {
+      // For real Supabase, we might need to configure session persistence differently
+      // But the auth state change listener will handle it
+    }
+    
     return supabase.auth.signInWithPassword({ email, password })
   },
 
   signOut: async () => {
+    // Clear remember preference on sign out
+    localStorage.removeItem('insurax_remember_me')
     return supabase.auth.signOut()
   },
 

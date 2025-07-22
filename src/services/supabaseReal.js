@@ -4,31 +4,29 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    'Missing Supabase environment variables. Please check your .env file and ensure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set.'
-  )
+  console.warn('⚠️ Supabase credentials not found. Using mock API instead.')
 }
 
-console.log('Supabase URL:', supabaseUrl)
-console.log('Supabase Key exists:', !!supabaseAnonKey)
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-  }
-})
-
-// Expose to window for debugging
-if (typeof window !== 'undefined') {
-  window.supabase = supabase
+// Create Supabase client with dynamic session persistence
+const createSupabaseClient = () => {
+  const rememberMe = localStorage.getItem('insurax_remember_me') !== 'false'
+  
+  return createClient(supabaseUrl || '', supabaseAnonKey || '', {
+    auth: {
+      persistSession: rememberMe,
+      autoRefreshToken: rememberMe,
+      storageKey: 'insurax-auth',
+      storage: rememberMe ? window.localStorage : window.sessionStorage,
+    }
+  })
 }
 
-// Helper functions for common operations
+export const supabase = createSupabaseClient()
+
+// Helper functions specifically for real Supabase
 export const supabaseHelpers = {
   // Auth helpers
-  async signUp(email, password, metadata = {}) {
-    console.log('SignUp called with:', email, metadata)
+  async signUp(email, password, metadata) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -36,69 +34,55 @@ export const supabaseHelpers = {
         data: metadata
       }
     })
-    console.log('SignUp result:', { data, error })
     return { data, error }
   },
 
-  async signIn(email, password) {
-    console.log('SignIn called with:', email)
+  async signIn(email, password, rememberMe = true) {
+    // Store remember preference
+    localStorage.setItem('insurax_remember_me', rememberMe ? 'true' : 'false')
+    
+    // For real Supabase, we need to update the client configuration
+    if (!rememberMe) {
+      // Configure session to not persist
+      await supabase.auth.updateUser({
+        data: { session_persistence: 'session' }
+      })
+    }
+    
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password
     })
-    console.log('SignIn result:', { 
-      success: !error, 
-      userId: data?.user?.id,
-      session: !!data?.session,
-      error: error?.message 
-    })
+    
     return { data, error }
   },
 
   async signOut() {
     const { error } = await supabase.auth.signOut()
+    // Clear remember preference on sign out
+    localStorage.removeItem('insurax_remember_me')
     return { error }
   },
 
   async getUser() {
-    const { data: { user }, error } = await supabase.auth.getUser()
-    return { user, error }
+    const { data, error } = await supabase.auth.getUser()
+    return { data, error }
   },
 
   // Profile helpers
   async getProfile(userId) {
-    console.log('Getting profile for user:', userId)
+    console.log('🔍 supabaseReal: Getting profile for user:', userId)
     
     try {
-      // First, let's check if the profiles table is accessible
-      console.log('📊 Checking if profiles table is accessible...')
-      const { count, error: countError } = await supabase
-        .from('profiles')
-        .select('*', { count: 'exact', head: true })
-      
-      if (countError) {
-        console.error('❌ Error accessing profiles table:', countError)
-        console.error('Details:', { 
-          message: countError.message, 
-          details: countError.details,
-          hint: countError.hint,
-          code: countError.code 
-        })
-      } else {
-        console.log('✅ Profiles table accessible, total profiles:', count)
-      }
-      
-      // Now get the specific profile
-      console.log('🔍 Querying specific profile...')
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single()
       
-      console.log('Profile query completed')
-      console.log('Profile query result:', { 
-        found: !!data, 
+      console.log('📊 Profile query result:', {
+        hasError: !!error, 
+        hasData: !!data, 
         data: data,
         error: error?.message,
         errorCode: error?.code,

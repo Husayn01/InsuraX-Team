@@ -23,11 +23,27 @@ export const AuthProvider = ({ children }) => {
     const initAuth = async () => {
       console.log('🔄 AuthContext: Initializing auth...')
       try {
-        const { user } = await supabaseHelpers.getUser()
-        console.log('🔄 AuthContext: Current user:', user)
-        if (user) {
-          setUser(user)
-          await loadProfile(user.id)
+        const rememberMe = localStorage.getItem('insurax_remember_me') !== 'false'
+        
+        if (!rememberMe) {
+          // Check sessionStorage for non-remembered sessions
+          const sessionUser = sessionStorage.getItem('insurax_user')
+          if (sessionUser) {
+            const parsedUser = JSON.parse(sessionUser)
+            console.log('🔄 AuthContext: Found session user:', parsedUser.id)
+            setUser(parsedUser)
+            await loadProfile(parsedUser.id)
+            return
+          }
+        }
+        
+        // Check persistent storage
+        const { data } = await supabaseHelpers.getUser()
+        const authUser = data?.user
+        console.log('🔄 AuthContext: Current user:', authUser)
+        if (authUser) {
+          setUser(authUser)
+          await loadProfile(authUser.id)
         }
       } catch (error) {
         console.error('❌ Auth initialization error:', error)
@@ -51,6 +67,9 @@ export const AuthProvider = ({ children }) => {
         console.log('👋 AuthContext: User signed out')
         setUser(null)
         setProfile(null)
+        // Clear both storages on sign out
+        sessionStorage.removeItem('insurax_user')
+        sessionStorage.removeItem('insurax_token')
         navigate('/login')
       }
     })
@@ -80,53 +99,42 @@ export const AuthProvider = ({ children }) => {
               full_name: role === 'customer' ? 'Demo Customer' : null,
               company_name: role === 'insurer' ? 'Demo Insurance Co.' : null
             }
-            
-            console.log('📝 Creating profile with data:', profileData)
-            
-            const { data: newProfile, error: createError } = await supabase
-              .from('profiles')
-              .insert([profileData])
-              .select()
-              .single()
-            
-            if (createError) {
-              console.error('❌ Error creating profile:', createError)
-            } else {
-              console.log('✅ Profile created successfully:', newProfile)
-              setProfile(newProfile)
-            }
+            setProfile(profileData)
+            console.log('✅ Created default profile:', profileData)
           }
         }
-      } else {
-        console.log('✅ Profile loaded successfully:', data)
-        setProfile(data)
+        return
       }
+      
+      setProfile(data)
+      console.log('✅ Profile loaded:', data?.role)
     } catch (error) {
-      console.error('❌ Unexpected error loading profile:', error)
+      console.error('❌ Error in loadProfile:', error)
     }
   }
 
-  const signUp = async (email, password, userData) => {
-    console.log('📝 AuthContext: Signing up user:', email)
+  const signUp = async (email, password, metadata) => {
+    console.log('📝 AuthContext: Signing up new user')
     try {
-      const { data, error } = await supabaseHelpers.signUp(email, password, {
-        role: userData.role,
-        full_name: userData.fullName,
-        company_name: userData.companyName
-      })
+      const { data, error } = await supabaseHelpers.signUp(email, password, metadata)
       
-      if (error) throw error
-
-      // Create profile
-      if (data.user) {
-        console.log('👤 Creating profile for new user...')
+      if (error) {
+        console.error('❌ Signup error:', error)
+        throw error
+      }
+      
+      console.log('✅ Signup successful')
+      
+      // If using real Supabase and profile creation is needed
+      if (data?.user && import.meta.env.VITE_USE_MOCK_API !== 'true') {
+        // Create profile entry
         const { error: profileError } = await supabase
           .from('profiles')
           .insert([{
             id: data.user.id,
-            role: userData.role,
-            full_name: userData.fullName,
-            company_name: userData.companyName,
+            role: metadata.role,
+            full_name: metadata.fullName,
+            company_name: metadata.companyName,
             email: email
           }])
         
@@ -144,16 +152,27 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
-  const signIn = async (email, password) => {
-    console.log('🔐 AuthContext: Signing in user:', email)
+  const signIn = async (email, password, rememberMe = true) => {
+    console.log('🔐 AuthContext: Signing in user:', email, 'Remember:', rememberMe)
     try {
-      const { data, error } = await supabaseHelpers.signIn(email, password)
+      // Store remember preference
+      localStorage.setItem('insurax_remember_me', rememberMe ? 'true' : 'false')
+      
+      const { data, error } = await supabaseHelpers.signIn(email, password, rememberMe)
       if (error) {
         console.error('❌ Sign in error:', error)
         throw error
       }
       
       console.log('✅ Sign in successful, user:', data.user?.id)
+      
+      // Store in session storage if not remembering
+      if (!rememberMe && data.user) {
+        sessionStorage.setItem('insurax_user', JSON.stringify(data.user))
+        if (data.session?.access_token) {
+          sessionStorage.setItem('insurax_token', data.session.access_token)
+        }
+      }
       
       // Navigate based on role
       if (data.user) {
@@ -188,6 +207,12 @@ export const AuthProvider = ({ children }) => {
     try {
       const { error } = await supabaseHelpers.signOut()
       if (error) throw error
+      
+      // Clear all storage
+      sessionStorage.removeItem('insurax_user')
+      sessionStorage.removeItem('insurax_token')
+      localStorage.removeItem('insurax_remember_me')
+      
       console.log('✅ Sign out successful')
       return { success: true }
     } catch (error) {
