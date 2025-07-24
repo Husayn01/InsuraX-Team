@@ -1,9 +1,23 @@
 import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { 
-  FileText, DollarSign, Clock, CheckCircle, Plus, 
-  TrendingUp, AlertCircle, ArrowRight, Shield,
-  Bell, Activity, Zap
+  FileText, 
+  DollarSign, 
+  Clock, 
+  CheckCircle, 
+  Plus, 
+  TrendingUp, 
+  AlertCircle, 
+  ArrowRight, 
+  Shield,
+  Bell, 
+  Activity, 
+  Zap, 
+  ChevronRight,
+  CreditCard,
+  XCircle,  // You might need this too
+  User,     // And possibly this
+  Calendar  // And this as well
 } from 'lucide-react'
 import { DashboardLayout, PageHeader, StatsCard } from '@shared/layouts'
 import { Button, Card, CardBody, Badge, EmptyState, LoadingSpinner } from '@shared/components'

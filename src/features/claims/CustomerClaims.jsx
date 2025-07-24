@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { 
   FileText, Plus, Search, Filter, Download, 
   Calendar, ChevronDown, Eye, Clock, CheckCircle, 
@@ -10,12 +10,13 @@ import { supabaseHelpers } from '@services/supabase'
 import { DashboardLayout, PageHeader } from '@shared/layouts'
 import { 
   Button, Card, CardBody, Input, Select, Badge, 
-  LoadingSpinner, Alert 
+  LoadingSpinner, Alert, EmptyState 
 } from '@shared/components'
 import { format } from 'date-fns'
 
 export const CustomerClaims = () => {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [claims, setClaims] = useState([])
   const [filteredClaims, setFilteredClaims] = useState([])
@@ -25,9 +26,12 @@ export const CustomerClaims = () => {
     type: 'all',
     dateRange: 'all'
   })
+  const [error, setError] = useState(null)
 
   useEffect(() => {
-    fetchClaims()
+    if (user) {
+      fetchClaims()
+    }
   }, [user])
 
   useEffect(() => {
@@ -39,24 +43,51 @@ export const CustomerClaims = () => {
     
     try {
       setLoading(true)
-      const userClaims = await supabaseHelpers.getClaims(user.id)
-      setClaims(userClaims || [])
+      setError(null)
+      
+      // Use the correct format for getClaims
+      const { data, error } = await supabaseHelpers.getClaims({ 
+        customer_id: user.id 
+      })
+      
+      if (error) {
+        console.error('Error fetching claims:', error)
+        setError('Failed to load claims. Please try again.')
+        setClaims([])
+        return
+      }
+      
+      // Ensure data is always an array
+      setClaims(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error('Error fetching claims:', error)
+      setError('An unexpected error occurred. Please try again.')
+      setClaims([])
     } finally {
       setLoading(false)
     }
   }
 
   const applyFilters = () => {
+    // Safety check to ensure claims is an array
+    if (!Array.isArray(claims)) {
+      setFilteredClaims([])
+      return
+    }
+
     let filtered = [...claims]
 
     // Search filter
     if (searchTerm) {
-      filtered = filtered.filter(claim => 
-        claim.claim_data?.claimNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        claim.claim_data?.damageDescription?.toLowerCase().includes(searchTerm.toLowerCase())
-      )
+      filtered = filtered.filter(claim => {
+        const searchLower = searchTerm.toLowerCase()
+        return (
+          claim.id?.toLowerCase().includes(searchLower) ||
+          claim.claim_data?.claimNumber?.toLowerCase().includes(searchLower) ||
+          claim.claim_data?.damageDescription?.toLowerCase().includes(searchLower) ||
+          claim.claim_data?.claimantName?.toLowerCase().includes(searchLower)
+        )
+      })
     }
 
     // Status filter
@@ -152,6 +183,10 @@ export const CustomerClaims = () => {
   }
 
   const exportClaims = () => {
+    if (!Array.isArray(filteredClaims) || filteredClaims.length === 0) {
+      return
+    }
+
     const csv = [
       ['Claim Number', 'Type', 'Status', 'Amount', 'Date', 'Description'],
       ...filteredClaims.map(claim => [
@@ -170,6 +205,7 @@ export const CustomerClaims = () => {
     a.href = url
     a.download = `claims_${format(new Date(), 'yyyy-MM-dd')}.csv`
     a.click()
+    window.URL.revokeObjectURL(url)
   }
 
   if (loading) {
@@ -189,7 +225,11 @@ export const CustomerClaims = () => {
         description="View and manage all your insurance claims"
         actions={
           <div className="flex gap-3">
-            <Button variant="secondary" onClick={exportClaims} disabled={filteredClaims.length === 0}>
+            <Button 
+              variant="secondary" 
+              onClick={exportClaims} 
+              disabled={!Array.isArray(filteredClaims) || filteredClaims.length === 0}
+            >
               <Download className="w-4 h-4 mr-2" />
               Export
             </Button>
@@ -202,6 +242,13 @@ export const CustomerClaims = () => {
           </div>
         }
       />
+
+      {/* Error Alert */}
+      {error && (
+        <Alert type="error" title="Error" className="mb-6">
+          {error}
+        </Alert>
+      )}
 
       {/* Filters */}
       <Card className="mb-6">
@@ -250,26 +297,24 @@ export const CustomerClaims = () => {
       </Card>
 
       {/* Claims List */}
-      {filteredClaims.length === 0 ? (
-        <Card>
-          <CardBody className="text-center py-12">
-            <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-300 mb-2">No claims found</h3>
-            <p className="text-gray-400 mb-6">
-              {searchTerm || filters.status !== 'all' || filters.type !== 'all' || filters.dateRange !== 'all'
-                ? 'Try adjusting your filters'
-                : 'Submit your first claim to get started'}
-            </p>
-            {!searchTerm && filters.status === 'all' && filters.type === 'all' && filters.dateRange === 'all' && (
-              <Link to="/customer/claims/new">
-                <Button variant="primary">
-                  <Plus className="w-4 h-4 mr-2" />
-                  New Claim
-                </Button>
-              </Link>
-            )}
-          </CardBody>
-        </Card>
+      {!Array.isArray(filteredClaims) || filteredClaims.length === 0 ? (
+        <EmptyState
+          icon={FileText}
+          title="No claims found"
+          description={
+            searchTerm || filters.status !== 'all' || filters.type !== 'all' || filters.dateRange !== 'all'
+              ? 'Try adjusting your filters'
+              : 'Submit your first claim to get started'
+          }
+          action={
+            !searchTerm && filters.status === 'all' && filters.type === 'all' && filters.dateRange === 'all' && (
+              <Button onClick={() => navigate('/customer/claims/new')}>
+                <Plus className="w-4 h-4 mr-2" />
+                New Claim
+              </Button>
+            )
+          }
+        />
       ) : (
         <div className="grid gap-4">
           {filteredClaims.map((claim) => (

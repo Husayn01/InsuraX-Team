@@ -6,9 +6,9 @@ import {
   File, Image, FileCheck, AlertTriangle,
   ChevronDown, ChevronUp, Download, RefreshCw
 } from 'lucide-react';
-import { Alert, Button, Badge, Card, LoadingSpinner } from '@shared/components';
+import { Alert, Button, Badge, Card, CardBody, LoadingSpinner } from '@shared/components';
 import { geminiClient } from '../utils/geminiClient';
-import { EnhancedClaimsOrchestrator } from '../services/claimsOrchestrator';
+import { ClaimsProcessingSystem} from '../services/claimsOrchestrator';
 import { GEMINI_CONFIG } from '../config/gemini';
 
 export const ClaimsProcessingDemo = () => {
@@ -27,7 +27,7 @@ export const ClaimsProcessingDemo = () => {
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Initialize the enhanced orchestrator
-  const enhancedSystem = new EnhancedClaimsOrchestrator(geminiClient);
+ const enhancedSystem = new ClaimsProcessingSystem();
 
   useEffect(() => {
     const checkApiKey = async () => {
@@ -36,8 +36,7 @@ export const ClaimsProcessingDemo = () => {
         
         const hasApiKey = GEMINI_CONFIG.apiKey && 
                          GEMINI_CONFIG.apiKey !== 'YOUR_API_KEY_HERE' && 
-                         !GEMINI_CONFIG.apiKey.includes('YOUR') && 
-                         !GEMINI_CONFIG.apiKey.includes('AI');
+                         !GEMINI_CONFIG.apiKey.includes('YOUR')
         
         if (!hasApiKey) {
           setApiKeyStatus('missing');
@@ -181,48 +180,55 @@ Contact: +234 805 678 9012`
     }
   ];
 
-  const processDocument = async () => {
-    if (!documentText.trim() && uploadedFiles.length === 0) {
-      alert('Please enter claim text or upload a document');
-      return;
+const processDocument = async () => {
+  if (!documentText.trim() && uploadedFiles.length === 0) {
+    setErrorMessage('Please enter claim text or upload a document');
+    setTimeout(() => setErrorMessage(''), 3000);
+    return;
+  }
+
+  if (apiKeyStatus !== 'configured') {
+    setErrorMessage('This is a demo version. To use AI processing, please configure your Gemini API key.');
+    setTimeout(() => setErrorMessage(''), 5000);
+    return;
+  }
+
+  setProcessing(true);
+  setCurrentResult(null);
+  setErrorMessage('');
+
+  try {
+    let textToProcess = documentText;
+
+    // If files are uploaded, extract text from them
+    if (uploadedFiles.length > 0) {
+      const extractedTexts = await Promise.all(
+        uploadedFiles.map(file => enhancedSystem.extractTextFromFile(file))
+      );
+      textToProcess = extractedTexts.join('\n\n---\n\n') + '\n\n' + documentText;
     }
 
-    setProcessing(true);
+    const result = await enhancedSystem.processClaimComplete(textToProcess, {
+      generateCustomerResponse: true,
+      customerFriendly: true
+    });
+
+    if (result.success) {
+      setCurrentResult(result.result);
+      const claims = enhancedSystem.getAllClaims();
+      setAllClaims(claims);
+      updateAnalytics();
+    } else {
+      throw new Error(result.error || 'Processing failed');
+    }
+  } catch (error) {
+    console.error('Processing error:', error);
+    setErrorMessage(`Processing failed: ${error.message}`);
     setCurrentResult(null);
-
-    try {
-      let textToProcess = documentText;
-
-      // If files are uploaded, extract text from them
-      if (uploadedFiles.length > 0) {
-        const extractedTexts = await Promise.all(
-          uploadedFiles.map(file => enhancedSystem.extractTextFromFile(file))
-        );
-        textToProcess = extractedTexts.join('\n\n---\n\n') + '\n\n' + documentText;
-      }
-
-      const result = await enhancedSystem.processClaimComplete(textToProcess, {
-        generateCustomerResponse: true,
-        additionalContext: 'Demo processing with enhanced features'
-      });
-
-      setCurrentResult(result);
-      
-      if (result.status === 'completed') {
-        const claims = enhancedSystem.getAllClaims();
-        setAllClaims(claims);
-        updateAnalytics();
-      }
-    } catch (error) {
-      console.error('Processing error:', error);
-      setCurrentResult({
-        status: 'failed',
-        error: error.message
-      });
-    }
-
+  } finally {
     setProcessing(false);
-  };
+  }
+};
 
   const updateAnalytics = () => {
     const analytics = enhancedSystem.generateAnalytics();
@@ -379,7 +385,7 @@ Contact: +234 805 678 9012`
         
         {/* File Upload Area */}
         <div
-          className={`border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200 ${
+          className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200 ${
             dragActive 
               ? 'border-cyan-500 bg-cyan-500/10' 
               : 'border-gray-600 bg-gray-800/50 hover:border-gray-500'
@@ -878,3 +884,5 @@ Contact: +234 805 678 9012`
     </div>
   );
 };
+
+export default ClaimsProcessingDemo;
