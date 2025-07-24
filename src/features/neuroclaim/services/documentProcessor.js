@@ -1,6 +1,7 @@
+// services/documentProcessor.js
 export class DocumentProcessor {
-  constructor(openAIClient) {
-    this.client = openAIClient;
+  constructor(geminiClient) {
+    this.client = geminiClient;
   }
 
   // Helper method to clean and parse JSON from AI responses
@@ -12,6 +13,23 @@ export class DocumentProcessor {
         cleanContent = cleanContent.replace(/```json\s*/, '').replace(/```\s*$/, '');
       } else if (cleanContent.startsWith('```')) {
         cleanContent = cleanContent.replace(/```\s*/, '').replace(/```\s*$/, '');
+      }
+      
+      // Remove any text before the first { or [
+      const jsonStart = Math.min(
+        cleanContent.indexOf('{') !== -1 ? cleanContent.indexOf('{') : Infinity,
+        cleanContent.indexOf('[') !== -1 ? cleanContent.indexOf('[') : Infinity
+      );
+      if (jsonStart !== Infinity && jsonStart > 0) {
+        cleanContent = cleanContent.substring(jsonStart);
+      }
+      
+      // Remove any text after the last } or ]
+      const lastBrace = cleanContent.lastIndexOf('}');
+      const lastBracket = cleanContent.lastIndexOf(']');
+      const jsonEnd = Math.max(lastBrace, lastBracket);
+      if (jsonEnd !== -1 && jsonEnd < cleanContent.length - 1) {
+        cleanContent = cleanContent.substring(0, jsonEnd + 1);
       }
       
       return JSON.parse(cleanContent);

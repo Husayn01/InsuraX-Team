@@ -1,6 +1,7 @@
+// services/claimCategorizer.js
 export class ClaimCategorizer {
-  constructor(openAIClient) {
-    this.client = openAIClient;
+  constructor(geminiClient) {
+    this.client = geminiClient;
   }
 
   // Helper method to clean and parse JSON responses
@@ -11,6 +12,23 @@ export class ClaimCategorizer {
         cleanContent = cleanContent.replace(/```json\s*/, '').replace(/```\s*$/, '');
       } else if (cleanContent.startsWith('```')) {
         cleanContent = cleanContent.replace(/```\s*/, '').replace(/```\s*$/, '');
+      }
+      
+      // Remove any text before the first { or [
+      const jsonStart = Math.min(
+        cleanContent.indexOf('{') !== -1 ? cleanContent.indexOf('{') : Infinity,
+        cleanContent.indexOf('[') !== -1 ? cleanContent.indexOf('[') : Infinity
+      );
+      if (jsonStart !== Infinity && jsonStart > 0) {
+        cleanContent = cleanContent.substring(jsonStart);
+      }
+      
+      // Remove any text after the last } or ]
+      const lastBrace = cleanContent.lastIndexOf('}');
+      const lastBracket = cleanContent.lastIndexOf(']');
+      const jsonEnd = Math.max(lastBrace, lastBracket);
+      if (jsonEnd !== -1 && jsonEnd < cleanContent.length - 1) {
+        cleanContent = cleanContent.substring(0, jsonEnd + 1);
       }
       
       return JSON.parse(cleanContent);
@@ -90,9 +108,9 @@ JSON:`;
 
       const categorization = this.parseJSONResponse(response.choices[0].message.content);
 
-      // Validate categorization structure
-      if (!categorization.category || !categorization.priority || !categorization.routing) {
-        throw new Error('Invalid categorization structure received');
+      // Validate the response structure
+      if (!categorization || !categorization.category || !categorization.priority) {
+        throw new Error('Invalid categorization structure');
       }
 
       return {
@@ -107,7 +125,53 @@ JSON:`;
       };
     }
   }
+
+  async determineClaimType(claimDescription) {
+    if (!claimDescription || typeof claimDescription !== 'string') {
+      return {
+        success: false,
+        error: 'Invalid claim description provided'
+      };
+    }
+
+    const prompt = `Based on this claim description, determine the claim type:
+
+Description: ${claimDescription}
+
+Return a JSON object:
+{
+  "primaryType": "auto|health|property|life|liability|workers_comp|other",
+  "subType": "specific subcategory",
+  "confidence": "high|medium|low",
+  "keywords": ["relevant keywords identified"],
+  "requiresSpecialist": true|false
 }
 
-// Export both default and named
-export default ClaimCategorizer;
+Return ONLY valid JSON.
+
+JSON:`;
+
+    try {
+      const response = await this.client.chatCompletion([
+        { 
+          role: 'system', 
+          content: 'You are a claim type classification expert. Return only valid JSON.' 
+        },
+        { role: 'user', content: prompt }
+      ]);
+
+      const typeInfo = this.parseJSONResponse(response.choices[0].message.content);
+
+      return {
+        success: true,
+        typeInfo: typeInfo
+      };
+    } catch (error) {
+      console.error('Claim type determination failed:', error);
+      return {
+        success: false,
+        error: `Claim type determination failed: ${error.message}`
+      };
+    }
+  }
+}

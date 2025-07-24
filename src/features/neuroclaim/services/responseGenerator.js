@@ -1,6 +1,7 @@
+// services/responseGenerator.js
 export class ResponseGenerator {
-  constructor(openAIClient) {
-    this.client = openAIClient;
+  constructor(geminiClient) {
+    this.client = geminiClient;
   }
 
   // Helper method to clean and parse JSON responses
@@ -11,6 +12,23 @@ export class ResponseGenerator {
         cleanContent = cleanContent.replace(/```json\s*/, '').replace(/```\s*$/, '');
       } else if (cleanContent.startsWith('```')) {
         cleanContent = cleanContent.replace(/```\s*/, '').replace(/```\s*$/, '');
+      }
+      
+      // Remove any text before the first { or [
+      const jsonStart = Math.min(
+        cleanContent.indexOf('{') !== -1 ? cleanContent.indexOf('{') : Infinity,
+        cleanContent.indexOf('[') !== -1 ? cleanContent.indexOf('[') : Infinity
+      );
+      if (jsonStart !== Infinity && jsonStart > 0) {
+        cleanContent = cleanContent.substring(jsonStart);
+      }
+      
+      // Remove any text after the last } or ]
+      const lastBrace = cleanContent.lastIndexOf('}');
+      const lastBracket = cleanContent.lastIndexOf(']');
+      const jsonEnd = Math.max(lastBrace, lastBracket);
+      if (jsonEnd !== -1 && jsonEnd < cleanContent.length - 1) {
+        cleanContent = cleanContent.substring(0, jsonEnd + 1);
       }
       
       return JSON.parse(cleanContent);
@@ -125,6 +143,74 @@ Return the response text directly, not as JSON.`;
       return {
         success: false,
         error: `Customer response generation failed: ${error.message}`
+      };
+    }
+  }
+
+  async generateInternalMemo(claimData, findings, recommendations) {
+    if (!claimData || !findings || !recommendations) {
+      return {
+        success: false,
+        error: 'Missing required data for internal memo generation'
+      };
+    }
+
+    const prompt = `Create an internal memo about this claim for management review:
+
+Claim Data: ${JSON.stringify(claimData, null, 2)}
+Findings: ${JSON.stringify(findings, null, 2)}
+Recommendations: ${JSON.stringify(recommendations, null, 2)}
+
+Generate a structured internal memo with:
+{
+  "to": "Claims Management Team",
+  "from": "AI Claims Processing System",
+  "date": "${new Date().toLocaleDateString()}",
+  "subject": "concise subject line",
+  "priority": "urgent|high|normal|low",
+  "summary": "executive summary paragraph",
+  "keyFindings": [
+    "important finding 1",
+    "important finding 2"
+  ],
+  "recommendations": [
+    "recommendation 1",
+    "recommendation 2"
+  ],
+  "requiredActions": [
+    {
+      "action": "specific action needed",
+      "responsible": "department or role",
+      "deadline": "timeframe"
+    }
+  ],
+  "attachments": ["list of relevant documents or reports"]
+}
+
+Return ONLY valid JSON.
+
+JSON:`;
+
+    try {
+      const response = await this.client.chatCompletion([
+        { 
+          role: 'system', 
+          content: 'You are a professional memo writer who creates clear, actionable internal communications. Return only valid JSON.' 
+        },
+        { role: 'user', content: prompt }
+      ]);
+
+      const memo = this.parseJSONResponse(response.choices[0].message.content);
+
+      return {
+        success: true,
+        memo: memo
+      };
+    } catch (error) {
+      console.error('Internal memo generation failed:', error);
+      return {
+        success: false,
+        error: `Internal memo generation failed: ${error.message}`
       };
     }
   }

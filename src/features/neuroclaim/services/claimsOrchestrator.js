@@ -1,4 +1,5 @@
-import { openAIClient } from '../utils/apiClient.js';
+// services/claimsOrchestrator.js
+import { geminiClient } from '../utils/geminiClient.js';
 import { DocumentProcessor } from './documentProcessor.js';
 import { FraudDetector } from './fraudDetector.js';
 import { ClaimCategorizer } from './claimCategorizer.js';
@@ -7,11 +8,11 @@ import { ClaimsChatInterface } from './chatInterface.js';
 
 export class ClaimsProcessingSystem {
   constructor() {
-    this.documentProcessor = new DocumentProcessor(openAIClient);
-    this.fraudDetector = new FraudDetector(openAIClient);
-    this.claimCategorizer = new ClaimCategorizer(openAIClient);
-    this.responseGenerator = new ResponseGenerator(openAIClient);
-    this.chatInterface = new ClaimsChatInterface(openAIClient);
+    this.documentProcessor = new DocumentProcessor(geminiClient);
+    this.fraudDetector = new FraudDetector(geminiClient);
+    this.claimCategorizer = new ClaimCategorizer(geminiClient);
+    this.responseGenerator = new ResponseGenerator(geminiClient);
+    this.chatInterface = new ClaimsChatInterface(geminiClient);
     
     this.processedClaims = new Map(); // In-memory storage for demo
     this.supportedFileTypes = [
@@ -92,138 +93,114 @@ export class ClaimsProcessingSystem {
         console.log(`[${processingId}] Generating customer response...`);
         const responseResult = await this.responseGenerator.generateCustomerResponse(
           claimData,
-          categorizationResult.categorization.routing.assignmentType,
+          summaryResult.summary,
           options.customerFriendly !== false
         );
         
-        if (responseResult.success) {
+        if (!responseResult.success) {
+          console.warn(`Customer response generation failed: ${responseResult.error}`);
+        } else {
           customerResponse = responseResult.response;
         }
       }
 
-      // Compile complete result
-      const processingResult = {
+      // Step 7: Generate action plan
+      console.log(`[${processingId}] Generating action plan...`);
+      const actionPlan = this.generateActionPlan(
+        validationResult.validation,
+        fraudAssessment.assessment,
+        categorizationResult.categorization
+      );
+
+      // Compile final result
+      const processingTimeMs = Date.now() - startTime;
+      const result = {
         processingId,
-        timestamp: new Date().toISOString(),
-        processingTimeMs: Date.now() - startTime,
         status: 'completed',
-        originalDocument: documentText,
+        processingTimeMs,
+        timestamp: new Date().toISOString(),
         extractedData: claimData,
         validation: validationResult.validation,
         fraudAssessment: fraudAssessment.assessment,
         categorization: categorizationResult.categorization,
         summary: summaryResult.summary,
         customerResponse,
-        recommendedActions: this.generateActionPlan(
-          validationResult.validation,
-          fraudAssessment.assessment,
-          categorizationResult.categorization
-        )
+        actionPlan,
+        metadata: {
+          documentLength: documentText.length,
+          processingOptions: options
+        }
       };
 
-      // Store for future reference
-      this.processedClaims.set(processingId, processingResult);
+      // Store result
+      this.processedClaims.set(processingId, result);
+      console.log(`[${processingId}] Processing completed in ${processingTimeMs}ms`);
 
-      console.log(`[${processingId}] Claim processing completed successfully`);
-      return {
-        success: true,
-        result: processingResult
-      };
-
+      return result;
     } catch (error) {
-      console.error(`[${processingId}] Claim processing failed:`, error);
+      console.error(`[${processingId}] Processing failed:`, error);
       
-      const errorResult = {
+      const failedResult = {
         processingId,
-        timestamp: new Date().toISOString(),
-        processingTimeMs: Date.now() - startTime,
         status: 'failed',
         error: error.message,
-        originalDocument: documentText
+        processingTimeMs: Date.now() - startTime,
+        timestamp: new Date().toISOString()
       };
 
-      return {
-        success: false,
-        result: errorResult,
-        error: error.message
-      };
+      this.processedClaims.set(processingId, failedResult);
+      return failedResult;
     }
   }
 
   /**
-   * File extraction methods
+   * Extract text from various file types
+   * @param {File} file - File to extract text from
+   * @returns {Promise<string>} Extracted text
    */
   async extractTextFromFile(file) {
-    const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
-    
-    try {
-      switch (fileExtension) {
-        case '.txt':
-        case '.rtf':
-        case '.json':
-        case '.xml':
-        case '.csv':
-          return await this.readTextFile(file);
-        
-        case '.pdf':
-          return await this.extractFromPDF(file);
-        
-        case '.doc':
-        case '.docx':
-          return await this.extractFromWord(file);
-        
-        case '.jpg':
-        case '.jpeg':
-        case '.png':
-        case '.gif':
-        case '.bmp':
-          return await this.extractFromImage(file);
-        
-        default:
-          throw new Error(`Unsupported file type: ${fileExtension}`);
-      }
-    } catch (error) {
-      throw new Error(`Failed to extract text from ${file.name}: ${error.message}`);
+    const fileType = file.type.toLowerCase();
+    const fileName = file.name.toLowerCase();
+
+    if (fileType === 'text/plain' || fileName.endsWith('.txt')) {
+      return await this.extractFromTextFile(file);
+    } else if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
+      return await this.extractFromPDF(file);
+    } else if (fileName.endsWith('.doc') || fileName.endsWith('.docx') || 
+               fileType.includes('msword') || fileType.includes('wordprocessingml')) {
+      return await this.extractFromWord(file);
+    } else if (fileType.startsWith('image/') || 
+               ['.jpg', '.jpeg', '.png', '.gif', '.bmp'].some(ext => fileName.endsWith(ext))) {
+      return await this.extractFromImage(file);
+    } else {
+      throw new Error(`Unsupported file type: ${file.type || 'unknown'}`);
     }
   }
 
-  async readTextFile(file) {
+  async extractFromTextFile(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => resolve(e.target.result);
-      reader.onerror = (e) => reject(new Error('Failed to read file'));
+      reader.onerror = () => reject(new Error('Failed to read text file'));
       reader.readAsText(file);
     });
   }
 
   async extractFromPDF(file) {
+    // In a real implementation, this would use a library like pdf.js
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = async (e) => {
-        try {
-          const arrayBuffer = e.target.result;
-          const uint8Array = new Uint8Array(arrayBuffer);
-          
-          const header = String.fromCharCode(...uint8Array.slice(0, 4));
-          if (header !== '%PDF') {
-            reject(new Error('Invalid PDF file'));
-            return;
-          }
-          
-          resolve(`EXTRACTED FROM PDF: ${file.name}
-          
-This is simulated text extraction from a PDF document. In a real implementation, 
-this would use libraries like PDF.js or server-side PDF processing tools to extract 
-actual text content from the PDF file.
+      reader.onload = () => {
+        resolve(`EXTRACTED FROM PDF: ${file.name}
+        
+This is simulated text extraction from a PDF file. In a real implementation,
+this would use libraries like pdf.js or pdf-parse to extract actual text content.
 
 File: ${file.name}
 Size: ${file.size} bytes
 Type: ${file.type}
 
-[Simulated claim content would appear here after real PDF processing]`);
-        } catch (error) {
-          reject(new Error('PDF processing failed'));
-        }
+[Actual PDF content would be extracted here using PDF parsing libraries]`);
       };
       reader.onerror = () => reject(new Error('Failed to read PDF file'));
       reader.readAsArrayBuffer(file);
@@ -231,9 +208,10 @@ Type: ${file.type}
   }
 
   async extractFromWord(file) {
+    // In a real implementation, this would use a library like mammoth.js
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = () => {
         try {
           resolve(`EXTRACTED FROM WORD DOCUMENT: ${file.name}
           
