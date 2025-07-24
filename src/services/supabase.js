@@ -4,21 +4,20 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    'Missing Supabase environment variables. Please check your .env file and ensure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set.'
-  )
+  console.error('Missing Supabase environment variables')
 }
 
-console.log('🔌 Supabase Connected:', supabaseUrl)
-
-// Create Supabase client
+// Create Supabase client with proper auth configuration
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    persistSession: true,
     autoRefreshToken: true,
+    persistSession: true,
     detectSessionInUrl: true,
+    flowType: 'pkce',
     storage: window.localStorage,
-    storageKey: 'insurax-auth-token'
+    storageKey: 'insurax-auth-token',
+    // Refresh session 60 seconds before expiry
+    expiry_margin: 60
   }
 })
 
@@ -26,51 +25,53 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 export const supabaseHelpers = {
   // Auth helpers
   async signUp(email, password, metadata = {}) {
-    console.log('📝 SignUp called with:', email, metadata)
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: metadata
+    console.log('🚀 Starting signup process:', email)
+    
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: metadata
+        }
+      })
+      
+      if (error) {
+        console.error('❌ Signup error:', error)
+        return { data: null, error }
       }
-    })
-    console.log('SignUp result:', { success: !error, userId: data?.user?.id })
-    return { data, error }
+      
+      console.log('✅ Signup successful, user created:', data.user?.id)
+      
+      // Profile will be created by database trigger
+      return { data, error: null }
+    } catch (error) {
+      console.error('❌ Unexpected signup error:', error)
+      return { data: null, error }
+    }
   },
 
   async signIn(email, password) {
-    console.log('🔐 SignIn called with:', email)
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password
-    })
-    console.log('SignIn result:', { 
-      success: !error, 
-      userId: data?.user?.id,
-      session: !!data?.session 
     })
     return { data, error }
   },
 
   async signOut() {
-    console.log('👋 Signing out...')
     const { error } = await supabase.auth.signOut()
     return { error }
   },
 
-  async getUser() {
-    const { data, error } = await supabase.auth.getUser()
-    return { data, error }
-  },
-
   async getSession() {
-    const { data, error } = await supabase.auth.getSession()
-    return { data, error }
+    const { data: { session }, error } = await supabase.auth.getSession()
+    return { session, error }
   },
 
-  // Profile helpers with timeout and better error handling
+  // Profile helpers
   async getProfile(userId) {
-    console.log('👤 Getting profile for user:', userId)
+    console.log('📋 Fetching profile for user:', userId)
     
     if (!userId) {
       console.error('❌ No userId provided to getProfile')
@@ -78,34 +79,28 @@ export const supabaseHelpers = {
     }
     
     try {
-      // Add timeout to prevent hanging
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Profile fetch timeout')), 10000)
-      )
-      
-      const queryPromise = supabase
+      const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single()
       
-      const result = await Promise.race([queryPromise, timeoutPromise])
-      
-      const { data, error } = result
-      
       if (error) {
+        console.error('❌ Profile fetch error:', error)
+        
+        // If profile doesn't exist, return null data instead of error
         if (error.code === 'PGRST116') {
-          console.log('⚠️ No profile found for user')
-          return { data: null, error: null } // Return null instead of error for missing profile
+          console.log('ℹ️ Profile not found for user:', userId)
+          return { data: null, error: null }
         }
-        console.error('❌ Error fetching profile:', error)
+        
         return { data: null, error }
       }
       
-      console.log('✅ Profile fetched successfully:', data?.role)
+      console.log('✅ Profile fetched successfully')
       return { data, error: null }
     } catch (error) {
-      console.error('❌ Profile fetch error:', error.message)
+      console.error('❌ Unexpected error fetching profile:', error)
       return { data: null, error }
     }
   },
@@ -248,14 +243,78 @@ export const supabaseHelpers = {
     return { data, error }
   },
 
+  // Notification helpers
+  async getNotifications(userId) {
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+    
+    return { data: data || [], error }
+  },
+
+  async createNotification(notificationData) {
+    const { data, error } = await supabase
+      .from('notifications')
+      .insert([notificationData])
+      .select()
+      .single()
+    
+    return { data, error }
+  },
+
+  async markNotificationRead(notificationId) {
+    const { data, error } = await supabase
+      .from('notifications')
+      .update({ read: true })
+      .eq('id', notificationId)
+      .select()
+      .single()
+    
+    return { data, error }
+  },
+
+  async deleteNotification(notificationId) {
+    const { error } = await supabase
+      .from('notifications')
+      .delete()
+      .eq('id', notificationId)
+    
+    return { error }
+  },
+
+  // Helper function to create claim notifications
+  async createClaimNotification(userId, claimId, type, title, message, additionalData = {}) {
+    return await this.createNotification({
+      user_id: userId,
+      type: type || 'claim_update',
+      title,
+      message,
+      data: { 
+        claimId, 
+        ...additionalData 
+      },
+      read: false
+    })
+  },
+
   // File storage helpers
   async uploadFile(bucket, path, file) {
     const { data, error } = await supabase.storage
       .from(bucket)
       .upload(path, file, {
-        upsert: false,
-        cacheControl: '3600'
+        cacheControl: '3600',
+        upsert: false
       })
+    
+    return { data, error }
+  },
+
+  async deleteFile(bucket, path) {
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .remove([path])
     
     return { data, error }
   },
@@ -268,59 +327,40 @@ export const supabaseHelpers = {
     return data.publicUrl
   },
 
-  async deleteFile(bucket, paths) {
-    const { data, error } = await supabase.storage
-      .from(bucket)
-      .remove(paths)
+  // Real-time subscription helpers
+  subscribeToClaimsChannel(callback, filters = {}) {
+    const channel = supabase.channel('claims-channel')
     
-    return { data, error }
+    let subscription = channel.on(
+      'postgres_changes',
+      { 
+        event: '*', 
+        schema: 'public', 
+        table: 'claims',
+        ...filters
+      },
+      callback
+    )
+    
+    return subscription.subscribe()
   },
 
-  // Customer helpers for insurers
-  async getCustomers() {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('role', 'customer')
-      .order('created_at', { ascending: false })
+  subscribeToNotificationsChannel(userId, callback) {
+    const channel = supabase.channel('notifications-channel')
     
-    return { data: data || [], error }
-  },
-
-  // Notification helpers
-  async getNotifications(userId) {
-    try {
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-      
-      if (error) {
-        console.error('Error fetching notifications:', error)
-        // Return empty array if notifications table doesn't exist
-        if (error.code === '42P01') {
-          console.log('Notifications table does not exist')
-          return { data: [], error: null }
-        }
-      }
-      
-      return { data: data || [], error }
-    } catch (error) {
-      console.error('Unexpected error fetching notifications:', error)
-      return { data: [], error }
-    }
-  },
-
-  async markNotificationRead(notificationId) {
-    const { data, error } = await supabase
-      .from('notifications')
-      .update({ read: true })
-      .eq('id', notificationId)
+    let subscription = channel.on(
+      'postgres_changes',
+      { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'notifications',
+        filter: `user_id=eq.${userId}`
+      },
+      callback
+    )
     
-    return { data, error }
+    return subscription.subscribe()
   }
 }
 
-// Export default for backward compatibility
 export default supabase

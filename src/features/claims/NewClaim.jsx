@@ -1,35 +1,28 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { 
-  FileText, Upload, AlertCircle, CheckCircle, 
-  X, File, Image, Paperclip
-} from 'lucide-react'
 import { useAuth } from '@contexts/AuthContext'
-import { supabaseHelpers } from '@services/supabase'
 import { DashboardLayout, PageHeader } from '@shared/layouts'
-import { 
-  Button, Card, CardBody, Input, Select, 
-  Alert, LoadingSpinner 
-} from '@shared/components'
+import { Button, Card, CardBody, Input, Select, Alert } from '@shared/components'
+import { Upload, FileText, X, Image, File, Plus, AlertCircle } from 'lucide-react'
+import { supabaseHelpers } from '@services/supabase'
+import { claimsSystem } from '@features/neuroclaim/services/claimsOrchestrator'
 
 export const NewClaim = () => {
-  const { user } = useAuth()
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+  const [uploadedFiles, setUploadedFiles] = useState([])
+  const [processingStatus, setProcessingStatus] = useState('')
   
   const [formData, setFormData] = useState({
     claimType: '',
     incidentDate: '',
-    damageDescription: '',
-    estimatedAmount: '',
     incidentLocation: '',
-    documents: []
+    damageDescription: '',
+    estimatedAmount: ''
   })
-
-  const [uploadedFiles, setUploadedFiles] = useState([])
-  const [dragActive, setDragActive] = useState(false)
 
   const claimTypeOptions = [
     { value: '', label: 'Select claim type' },
@@ -42,47 +35,20 @@ export const NewClaim = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }))
+    setFormData(prev => ({ ...prev, [name]: value }))
   }
 
-  const handleDrag = (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true)
-    } else if (e.type === "dragleave") {
-      setDragActive(false)
-    }
-  }
-
-  const handleDrop = (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setDragActive(false)
-    
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFiles(e.dataTransfer.files)
-    }
-  }
-
-  const handleFileInput = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      handleFiles(e.target.files)
-    }
-  }
-
-  const handleFiles = (files) => {
-    const fileArray = Array.from(files)
-    const validFiles = fileArray.filter(file => {
-      const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
-      return validTypes.includes(file.type) && file.size <= 10 * 1024 * 1024 // 10MB limit
+  const handleFileUpload = (e) => {
+    const files = Array.from(e.target.files)
+    const validFiles = files.filter(file => {
+      const validTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+      const maxSize = 10 * 1024 * 1024 // 10MB
+      
+      return validTypes.includes(file.type) && file.size <= maxSize
     })
 
-    if (validFiles.length !== fileArray.length) {
-      setError('Some files were skipped. Only images, PDFs, and Word documents under 10MB are allowed.')
+    if (validFiles.length !== files.length) {
+      setError('Some files were rejected. Only images, PDFs, and Word documents under 10MB are allowed.')
       setTimeout(() => setError(''), 5000)
     }
 
@@ -97,6 +63,7 @@ export const NewClaim = () => {
     e.preventDefault()
     setError('')
     setLoading(true)
+    setProcessingStatus('Validating claim information...')
 
     try {
       // Validate form
@@ -105,6 +72,7 @@ export const NewClaim = () => {
       }
 
       // Upload files to Supabase storage
+      setProcessingStatus('Uploading documents...')
       const fileUrls = []
       for (const file of uploadedFiles) {
         const fileName = `${user.id}/${Date.now()}-${file.name}`
@@ -116,7 +84,7 @@ export const NewClaim = () => {
         fileUrls.push(url)
       }
 
-      // Create claim data
+      // Create initial claim data
       const claimData = {
         customer_id: user.id,
         status: 'submitted',
@@ -127,18 +95,107 @@ export const NewClaim = () => {
           estimatedAmount: parseFloat(formData.estimatedAmount) || 0,
           incidentLocation: formData.incidentLocation,
           claimNumber: `CLM-${Date.now()}`,
-          confidence: 'high'
+          aiProcessingStatus: 'pending'
         },
         documents: fileUrls,
         created_at: new Date().toISOString()
       }
 
-      // Submit claim
-      const { data, error } = await supabaseHelpers.createClaim(claimData)
+      // Submit claim to database
+      setProcessingStatus('Creating claim record...')
+      const { data: createdClaim, error: claimError } = await supabaseHelpers.createClaim(claimData)
       
-      if (error) throw error
+      if (claimError) throw claimError
+
+      // Create notification for claim submission
+      await supabaseHelpers.createClaimNotification(
+        user.id,
+        createdClaim.id,
+        'claim_update',
+        'Claim Submitted Successfully',
+        `Your claim ${createdClaim.claim_data.claimNumber} has been submitted and is being processed by our AI system.`,
+        { status: 'submitted' }
+      )
+
+      // Process with NeuroClaim AI if files were uploaded
+      if (uploadedFiles.length > 0) {
+        setProcessingStatus('Processing with NeuroClaim AI...')
+        
+        try {
+          const aiResult = await claimsSystem.processClaimRequest({
+            claimData: {
+              ...formData,
+              claimNumber: createdClaim.claim_data.claimNumber,
+              submittedBy: user.email,
+              submissionDate: new Date().toISOString()
+            },
+            documents: uploadedFiles
+          })
+
+          // Update claim with AI results
+          if (aiResult.status === 'completed') {
+            setProcessingStatus('Saving AI analysis results...')
+            
+            const updatedClaimData = {
+              claim_data: {
+                ...createdClaim.claim_data,
+                aiProcessingStatus: 'completed',
+                aiAnalysis: {
+                  processingId: aiResult.processingId,
+                  extractedData: aiResult.extractedData,
+                  fraudAssessment: {
+                    score: aiResult.fraudAssessment.score,
+                    riskLevel: aiResult.fraudAssessment.riskLevel,
+                    flags: aiResult.fraudAssessment.flags,
+                    confidence: aiResult.fraudAssessment.confidence
+                  },
+                  categorization: aiResult.categorization,
+                  validationStatus: aiResult.validationStatus,
+                  processingTime: aiResult.processingTimeMs,
+                  recommendations: aiResult.recommendations
+                }
+              },
+              status: aiResult.fraudAssessment.riskLevel === 'critical' ? 'flagged' : 'processing'
+            }
+
+            await supabaseHelpers.updateClaim(createdClaim.id, updatedClaimData)
+
+            // Create notification for AI processing completion
+            await supabaseHelpers.createClaimNotification(
+              user.id,
+              createdClaim.id,
+              'claim_update',
+              'AI Analysis Complete',
+              `Your claim has been analyzed by our AI system. Risk level: ${aiResult.fraudAssessment.riskLevel}`,
+              { 
+                status: 'ai_processed',
+                riskLevel: aiResult.fraudAssessment.riskLevel 
+              }
+            )
+          }
+        } catch (aiError) {
+          console.error('AI processing error:', aiError)
+          // Update claim to indicate AI processing failed but claim is still submitted
+          await supabaseHelpers.updateClaim(createdClaim.id, {
+            claim_data: {
+              ...createdClaim.claim_data,
+              aiProcessingStatus: 'failed',
+              aiError: aiError.message
+            }
+          })
+        }
+      } else {
+        // No documents uploaded, update status to indicate manual review needed
+        await supabaseHelpers.updateClaim(createdClaim.id, {
+          claim_data: {
+            ...createdClaim.claim_data,
+            aiProcessingStatus: 'no_documents'
+          }
+        })
+      }
 
       setSuccess(true)
+      setProcessingStatus('')
       setTimeout(() => {
         navigate('/customer/claims')
       }, 2000)
@@ -146,6 +203,7 @@ export const NewClaim = () => {
     } catch (err) {
       console.error('Error submitting claim:', err)
       setError(err.message || 'Failed to submit claim')
+      setProcessingStatus('')
     } finally {
       setLoading(false)
     }
@@ -170,7 +228,7 @@ export const NewClaim = () => {
 
       {success && (
         <Alert type="success" title="Claim submitted successfully!" className="mb-6 bg-green-900/20 border-green-500/50">
-          Your claim has been submitted and will be processed by our AI system. Redirecting to claims page...
+          Your claim has been submitted and is being processed by our AI system. Redirecting to claims page...
         </Alert>
       )}
 
@@ -186,6 +244,13 @@ export const NewClaim = () => {
                 <Alert type="error" title="Submission Error" className="bg-red-900/20 border-red-500/50">
                   {error}
                 </Alert>
+              )}
+
+              {processingStatus && (
+                <div className="flex items-center gap-3 p-4 bg-blue-900/20 border border-blue-500/50 rounded-lg">
+                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-blue-400 border-t-transparent"></div>
+                  <span className="text-sm font-medium text-blue-400">{processingStatus}</span>
+                </div>
               )}
 
               <Select
@@ -235,7 +300,7 @@ export const NewClaim = () => {
               </div>
 
               <Input
-                label="Estimated Amount"
+                label="Estimated Amount ($)"
                 type="number"
                 name="estimatedAmount"
                 value={formData.estimatedAmount}
@@ -253,42 +318,47 @@ export const NewClaim = () => {
             <div className="px-6 py-4 border-b border-gray-700">
               <h2 className="text-lg font-semibold text-gray-100">Supporting Documents</h2>
               <p className="text-sm text-gray-400 mt-1">
-                Upload photos, receipts, police reports, or other relevant documents
+                Upload photos, receipts, or other documents (AI processing available)
               </p>
             </div>
             <CardBody>
-              {/* Drag and Drop Area */}
-              <div
-                className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all ${
-                  dragActive 
-                    ? 'border-cyan-500 bg-cyan-500/10' 
-                    : 'border-gray-600 hover:border-gray-500 bg-gray-700/30'
-                }`}
-                onDragEnter={handleDrag}
-                onDragLeave={handleDrag}
-                onDragOver={handleDrag}
-                onDrop={handleDrop}
-              >
+              <div className="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center hover:border-cyan-500 transition-colors">
                 <input
                   type="file"
+                  id="file-upload"
                   multiple
                   accept="image/*,.pdf,.doc,.docx"
-                  onChange={handleFileInput}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  onChange={handleFileUpload}
+                  className="hidden"
                 />
-                
-                <div className="flex flex-col items-center">
-                  <div className="p-3 bg-gray-700 rounded-full mb-4">
-                    <Upload className="w-8 h-8 text-gray-400" />
-                  </div>
-                  <p className="text-gray-100 font-medium mb-2">
-                    Drop files here or click to browse
+                <label
+                  htmlFor="file-upload"
+                  className="cursor-pointer"
+                >
+                  <Upload className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                  <p className="text-gray-300 font-medium mb-1">
+                    Click to upload documents
                   </p>
-                  <p className="text-sm text-gray-400">
-                    Images, PDFs, and Word documents up to 10MB
+                  <p className="text-sm text-gray-500">
+                    Images, PDFs, Word docs (max 10MB each)
                   </p>
-                </div>
+                </label>
               </div>
+
+              {/* AI Processing Notice */}
+              {uploadedFiles.length > 0 && (
+                <div className="mt-4 p-3 bg-cyan-900/20 border border-cyan-500/50 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-cyan-300">
+                      <p className="font-medium mb-1">AI Processing Available</p>
+                      <p className="text-cyan-400/80">
+                        Your documents will be automatically analyzed by NeuroClaim AI for faster processing.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Uploaded Files */}
               {uploadedFiles.length > 0 && (

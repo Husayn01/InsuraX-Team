@@ -13,109 +13,85 @@ export const useAuth = () => {
 }
 
 export const AuthProvider = ({ children }) => {
+  const navigate = useNavigate()
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [session, setSession] = useState(null)
-  const navigate = useNavigate()
-
-  // Load profile helper function
-  const loadProfile = async (userId) => {
-    console.log('📋 Loading profile for user:', userId)
-    try {
-      const { data, error } = await supabaseHelpers.getProfile(userId)
-      
-      if (error && error.code !== 'PGRST116') {
-        console.error('❌ Error loading profile:', error)
-        throw error
-      }
-      
-      if (!data) {
-        console.log('⚠️ No profile found, creating default profile...')
-        
-        // Get user email from session
-        const { data: { user } } = await supabase.auth.getUser()
-        const email = user?.email || ''
-        
-        // Determine role based on email for demo accounts
-        let role = 'customer'
-        let fullName = null
-        let companyName = null
-        
-        if (email === 'customer@demo.com') {
-          role = 'customer'
-          fullName = 'Demo Customer'
-        } else if (email === 'insurer@demo.com') {
-          role = 'insurer'
-          companyName = 'Demo Insurance Co.'
-        } else if (email.includes('insurer')) {
-          role = 'insurer'
-          companyName = 'Insurance Company'
-        }
-        
-        // Create profile
-        const profileData = {
-          id: userId,
-          role,
-          email,
-          full_name: fullName,
-          company_name: companyName,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }
-        
-        const { data: newProfile, error: createError } = await supabaseHelpers.createProfile(profileData)
-        
-        if (createError) {
-          console.error('❌ Error creating profile:', createError)
-          // Set a basic profile even if creation fails
-          setProfile(profileData)
-        } else {
-          console.log('✅ Profile created successfully')
-          setProfile(newProfile)
-        }
-      } else {
-        setProfile(data)
-        console.log('✅ Profile loaded:', data.role)
-      }
-      
-      return true // Profile loaded successfully
-    } catch (error) {
-      console.error('❌ Unexpected error in loadProfile:', error)
-      // Set a minimal profile to prevent app from breaking
-      setProfile({
-        id: userId,
-        role: 'customer',
-        email: user?.email || ''
-      })
-      return false
-    }
-  }
+  const [sessionError, setSessionError] = useState(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   useEffect(() => {
     let mounted = true
+    let authListener = null
 
-    // Check for existing session
-    const initAuth = async () => {
-      console.log('🔄 AuthContext: Initializing auth...')
+    const initializeAuth = async () => {
       try {
-        // Get current session from Supabase
-        const { data: { session } } = await supabase.auth.getSession()
+        console.log('🔍 AuthContext: Checking session...')
         
-        if (!mounted) return
+        // Get initial session
+        const { data: { session }, error } = await supabase.auth.getSession()
         
-        if (session) {
-          console.log('✅ Found existing session:', session.user.id)
-          setSession(session)
-          setUser(session.user)
-          
-          // Load profile and wait for it to complete
-          await loadProfile(session.user.id)
-        } else {
-          console.log('ℹ️ No existing session found')
+        if (error) {
+          console.error('❌ Session error:', error)
+          setSessionError(error.message)
+          if (mounted) {
+            setLoading(false)
+          }
+          return
         }
+
+        if (session?.user && mounted) {
+          console.log('✅ Session found:', session.user.id)
+          setUser(session.user)
+          await loadUserProfile(session.user.id)
+        } else {
+          console.log('ℹ️ No active session')
+        }
+
+        // Set up auth state listener
+        authListener = supabase.auth.onAuthStateChange(async (event, session) => {
+          console.log('🔄 Auth state changed:', event)
+          
+          // Prevent handling events if component is unmounted
+          if (!mounted) return
+          
+          // Handle different auth events
+          switch (event) {
+            case 'SIGNED_IN':
+              if (session?.user) {
+                setUser(session.user)
+                await loadUserProfile(session.user.id)
+              }
+              break
+              
+            case 'SIGNED_OUT':
+              setUser(null)
+              setProfile(null)
+              navigate('/login')
+              break
+              
+            case 'TOKEN_REFRESHED':
+              console.log('🔄 Token refreshed successfully')
+              if (session?.user) {
+                setUser(session.user)
+              }
+              break
+              
+            case 'USER_UPDATED':
+              if (session?.user) {
+                setUser(session.user)
+                await loadUserProfile(session.user.id)
+              }
+              break
+              
+            default:
+              break
+          }
+        })
+
       } catch (error) {
         console.error('❌ Auth initialization error:', error)
+        setSessionError(error.message)
       } finally {
         if (mounted) {
           setLoading(false)
@@ -124,254 +100,197 @@ export const AuthProvider = ({ children }) => {
       }
     }
 
-    initAuth()
+    initializeAuth()
 
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('🔔 Auth state changed:', event, session?.user?.id)
-      
-      if (!mounted) return
-
-      // Set loading true for state changes that need profile loading
-      if (event === 'SIGNED_IN' && session) {
-        setLoading(true)
-      }
-
-      if (event === 'SIGNED_IN' && session) {
-        console.log('✅ User signed in')
-        setSession(session)
-        setUser(session.user)
-        
-        // Load profile and wait for completion
-        await loadProfile(session.user.id)
-        
-        if (mounted) {
-          setLoading(false)
-        }
-        
-        // Send welcome email for new users (handled by Supabase Auth)
-        if (session.user.email_confirmed_at === null) {
-          console.log('📧 New user detected, welcome email will be sent by Supabase')
-        }
-      } else if (event === 'SIGNED_OUT') {
-        console.log('👋 User signed out')
-        setSession(null)
-        setUser(null)
-        setProfile(null)
-        setLoading(false)
-        navigate('/login')
-      } else if (event === 'TOKEN_REFRESHED' && session) {
-        console.log('🔄 Token refreshed')
-        setSession(session)
-      } else if (event === 'USER_UPDATED' && session) {
-        console.log('👤 User updated')
-        setUser(session.user)
-        await loadProfile(session.user.id)
-      }
-    })
-
+    // Cleanup function
     return () => {
       mounted = false
-      subscription.unsubscribe()
+      authListener?.data?.subscription?.unsubscribe()
     }
   }, [navigate])
 
-  const signUp = async (email, password, metadata) => {
-    console.log('📝 Signing up new user:', email)
+  const loadUserProfile = async (userId) => {
+    if (!userId) return
+    
     try {
-      const { data, error } = await supabaseHelpers.signUp(email, password, metadata)
+      console.log('📋 Loading profile for user:', userId)
+      const { data, error } = await supabaseHelpers.getProfile(userId)
       
       if (error) {
-        console.error('❌ Signup error:', error)
-        throw error
+        console.error('❌ Error loading profile:', error)
+        return
       }
       
-      console.log('✅ Signup successful')
-      
-      // If email confirmation is disabled, create profile immediately
-      if (data?.user && data?.session) {
-        const profileData = {
-          id: data.user.id,
-          role: metadata.role,
-          email: email,
-          full_name: metadata.fullName || null,
-          company_name: metadata.companyName || null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }
-        
-        const { error: profileError } = await supabaseHelpers.createProfile(profileData)
-        
-        if (profileError) {
-          console.error('❌ Profile creation error:', profileError)
-        } else {
-          console.log('✅ Profile created successfully')
-          // Create a welcome notification
-          await createWelcomeNotification(data.user.id, metadata.role)
-        }
+      if (data) {
+        console.log('✅ Profile loaded:', data.role)
+        setProfile(data)
+      } else {
+        console.log('⚠️ No profile found for user')
       }
-
-      return { success: true, data }
     } catch (error) {
-      console.error('❌ Signup error:', error)
-      return { success: false, error: error.message }
+      console.error('❌ Unexpected error loading profile:', error)
     }
   }
 
-  const createWelcomeNotification = async (userId, role) => {
+  const signUp = async (email, password, metadata = {}) => {
     try {
-      const notificationData = {
-        user_id: userId,
-        title: 'Welcome to InsuraX!',
-        message: role === 'customer' 
-          ? 'Your account has been created successfully. Start by filing your first claim or exploring our features.'
-          : 'Your insurer account is ready. Access your dashboard to manage claims and view analytics.',
-        type: 'system',
-        color: 'success',
-        icon: 'check-circle',
-        read: false,
-        created_at: new Date().toISOString()
-      }
-
-      const { error } = await supabase
-        .from('notifications')
-        .insert([notificationData])
-
-      if (error) {
-        console.error('Error creating welcome notification:', error)
-      } else {
-        console.log('✅ Welcome notification created')
-      }
+      setSessionError(null)
+      const { data, error } = await supabaseHelpers.signUp(email, password, metadata)
+      
+      if (error) throw error
+      
+      return { data, error: null }
     } catch (error) {
-      console.error('Error in createWelcomeNotification:', error)
+      console.error('Signup error:', error)
+      setSessionError(error.message)
+      return { data: null, error }
     }
   }
 
   const signIn = async (email, password) => {
-    console.log('🔐 Signing in user:', email)
-    setLoading(true)
-    
     try {
+      setSessionError(null)
+      setIsRefreshing(true)
+      
       const { data, error } = await supabaseHelpers.signIn(email, password)
       
-      if (error) {
-        console.error('❌ Sign in error:', error)
-        setLoading(false)
-        throw error
-      }
+      if (error) throw error
       
-      console.log('✅ Sign in successful, user:', data.user?.id)
-      
-      // Set user and session immediately
-      setUser(data.user)
-      setSession(data.session)
-      
-      // Load profile
       if (data.user) {
-        console.log('🔍 Loading profile for navigation...')
-        
-        // Load the profile and wait for completion
-        await loadProfile(data.user.id)
-        
-        // Get profile data for navigation
-        const { data: profileData } = await supabaseHelpers.getProfile(data.user.id)
-        
-        // Determine navigation
-        let targetRoute = '/customer/dashboard'
-        
-        if (profileData?.role) {
-          targetRoute = profileData.role === 'insurer' 
-            ? '/insurer/dashboard' 
-            : '/customer/dashboard'
-        } else {
-          // Fallback: determine based on email
-          const email = data.user.email || ''
-          if (email.includes('insurer') || email === 'insurer@demo.com') {
-            targetRoute = '/insurer/dashboard'
-          }
-        }
-        
-        console.log('➡️ Navigating to:', targetRoute)
-        
-        // Set loading false before navigation
-        setLoading(false)
-        
-        // Navigate
-        navigate(targetRoute)
+        setUser(data.user)
+        await loadUserProfile(data.user.id)
       }
       
-      return { success: true, data }
+      return { data, error: null }
     } catch (error) {
-      console.error('❌ SignIn error:', error)
-      setLoading(false)
-      return { success: false, error: error.message }
+      console.error('Sign in error:', error)
+      setSessionError(error.message)
+      return { data: null, error }
+    } finally {
+      setIsRefreshing(false)
     }
   }
 
   const signOut = async () => {
-    console.log('👋 Signing out...')
     try {
+      setSessionError(null)
       const { error } = await supabaseHelpers.signOut()
+      
       if (error) throw error
       
-      console.log('✅ Sign out successful')
-      return { success: true }
-    } catch (error) {
-      console.error('❌ Sign out error:', error)
-      return { success: false, error: error.message }
-    }
-  }
-
-  const updateProfile = async (updates) => {
-    console.log('📝 Updating profile...')
-    try {
-      const { data, error } = await supabaseHelpers.updateProfile(user.id, updates)
-      if (error) throw error
+      setUser(null)
+      setProfile(null)
+      navigate('/login')
       
-      setProfile(data)
-      console.log('✅ Profile updated successfully')
-      return { success: true, data }
+      return { error: null }
     } catch (error) {
-      console.error('❌ Update profile error:', error)
-      return { success: false, error: error.message }
+      console.error('Sign out error:', error)
+      setSessionError(error.message)
+      return { error }
     }
   }
 
   const refreshSession = async () => {
-    console.log('🔄 Refreshing session...')
+    if (isRefreshing) {
+      console.log('🔄 Already refreshing session, skipping...')
+      return
+    }
+    
     try {
-      const { data, error } = await supabase.auth.refreshSession()
-      if (error) throw error
+      setIsRefreshing(true)
+      console.log('🔄 Manually refreshing session...')
       
-      if (data.session) {
-        setSession(data.session)
-        console.log('✅ Session refreshed')
+      const { data: { session }, error } = await supabase.auth.refreshSession()
+      
+      if (error) {
+        console.error('❌ Session refresh error:', error)
+        // Only sign out if it's an invalid refresh token error
+        if (error.message.includes('refresh_token') || error.message.includes('invalid')) {
+          await signOut()
+        }
+        return { error }
       }
-      return { success: true, data }
+      
+      if (session) {
+        console.log('✅ Session refreshed successfully')
+        setUser(session.user)
+        await loadUserProfile(session.user.id)
+      }
+      
+      return { error: null }
     } catch (error) {
-      console.error('❌ Session refresh error:', error)
-      return { success: false, error: error.message }
+      console.error('❌ Refresh session error:', error)
+      return { error }
+    } finally {
+      setIsRefreshing(false)
     }
   }
+
+  // Check session validity on visibility change
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && user && !isRefreshing) {
+        console.log('🔍 Tab became visible, checking session...')
+        
+        try {
+          const { data: { session }, error } = await supabase.auth.getSession()
+          
+          if (error || !session) {
+            console.log('⚠️ Session invalid or expired, attempting refresh...')
+            await refreshSession()
+          } else {
+            console.log('✅ Session still valid')
+          }
+        } catch (error) {
+          console.error('❌ Visibility change session check error:', error)
+        }
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [user, isRefreshing])
+
+  // Periodic session check (every 10 minutes while tab is active)
+  useEffect(() => {
+    if (!user) return
+
+    const checkInterval = setInterval(async () => {
+      if (document.visibilityState === 'visible' && !isRefreshing) {
+        console.log('⏰ Periodic session check...')
+        
+        try {
+          const { data: { session }, error } = await supabase.auth.getSession()
+          
+          if (error || !session) {
+            console.log('⚠️ Session needs refresh')
+            await refreshSession()
+          }
+        } catch (error) {
+          console.error('❌ Periodic session check error:', error)
+        }
+      }
+    }, 10 * 60 * 1000) // 10 minutes
+
+    return () => clearInterval(checkInterval)
+  }, [user, isRefreshing])
 
   const value = {
     user,
     profile,
-    session,
     loading,
     signUp,
     signIn,
     signOut,
-    updateProfile,
     refreshSession,
+    sessionError,
     isAuthenticated: !!user,
     isCustomer: profile?.role === 'customer',
     isInsurer: profile?.role === 'insurer'
   }
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  )
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
