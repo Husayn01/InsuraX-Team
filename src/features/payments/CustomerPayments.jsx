@@ -1,21 +1,19 @@
 import React, { useState, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
 import { 
-  CreditCard, DollarSign, Calendar, CheckCircle, 
-  AlertCircle, Clock, TrendingUp, Receipt
+  CreditCard, Plus, Download, Clock, CheckCircle, 
+  AlertCircle, DollarSign, Calendar, TrendingUp, 
+  Smartphone, Building, Bitcoin
 } from 'lucide-react'
 import { useAuth } from '@contexts/AuthContext'
-import { supabaseHelpers } from '@services/supabase'
 import { DashboardLayout, PageHeader } from '@shared/layouts'
 import { 
-  Button, Card, CardBody, Badge, EmptyState, 
-  LoadingSpinner, Modal, Input, Select, Alert
+  Button, Card, CardBody, Input, Select, Badge, 
+  LoadingSpinner, Modal, Alert 
 } from '@shared/components'
 import { format } from 'date-fns'
 
 export const CustomerPayments = () => {
-  const { user, profile } = useAuth()
-  const navigate = useNavigate()
+  const { user } = useAuth()
   const [loading, setLoading] = useState(true)
   const [payments, setPayments] = useState([])
   const [showPaymentModal, setShowPaymentModal] = useState(false)
@@ -25,43 +23,63 @@ export const CustomerPayments = () => {
     paymentMethod: 'card',
     description: ''
   })
+  const [stats, setStats] = useState({
+    totalPaid: 0,
+    pendingPayments: 0,
+    lastPayment: null,
+    upcomingPayment: null
+  })
 
   useEffect(() => {
     fetchPayments()
-  }, [user])
+  }, [])
 
   const fetchPayments = async () => {
     try {
       setLoading(true)
-      // In a real app, you'd fetch payments from the payments table
-      // For now, we'll simulate with some mock data
+      // In a real app, fetch from API
       const mockPayments = [
         {
           id: '1',
-          amount: 250.00,
+          amount: 25000,
           status: 'completed',
           payment_method: 'card',
-          description: 'Monthly Premium - March 2024',
-          created_at: new Date('2024-03-01').toISOString()
+          description: 'Monthly premium - March 2024',
+          created_at: new Date(Date.now() - 86400000 * 30).toISOString(),
+          reference: 'PAY-2024-001'
         },
         {
           id: '2',
-          amount: 250.00,
+          amount: 25000,
           status: 'completed',
           payment_method: 'mobile_money',
-          description: 'Monthly Premium - February 2024',
-          created_at: new Date('2024-02-01').toISOString()
+          description: 'Monthly premium - February 2024',
+          created_at: new Date(Date.now() - 86400000 * 60).toISOString(),
+          reference: 'PAY-2024-002'
         },
         {
           id: '3',
-          amount: 500.00,
+          amount: 5000,
           status: 'pending',
-          payment_method: 'crypto',
-          description: 'Claim Deductible - CLM-2024-001',
-          created_at: new Date().toISOString()
+          payment_method: 'bank_transfer',
+          description: 'Claim deductible',
+          created_at: new Date(Date.now() - 86400000 * 5).toISOString(),
+          reference: 'PAY-2024-003'
         }
       ]
+
       setPayments(mockPayments)
+      
+      // Calculate stats
+      const completed = mockPayments.filter(p => p.status === 'completed')
+      const pending = mockPayments.filter(p => p.status === 'pending')
+      
+      setStats({
+        totalPaid: completed.reduce((sum, p) => sum + p.amount, 0),
+        pendingPayments: pending.reduce((sum, p) => sum + p.amount, 0),
+        lastPayment: completed[0],
+        upcomingPayment: pending[0]
+      })
     } catch (error) {
       console.error('Error fetching payments:', error)
     } finally {
@@ -69,23 +87,18 @@ export const CustomerPayments = () => {
     }
   }
 
-  const paymentMethodOptions = [
-    { value: 'card', label: 'Credit/Debit Card' },
-    { value: 'mobile_money', label: 'Mobile Money' },
-    { value: 'bank_transfer', label: 'Bank Transfer' },
-    { value: 'crypto', label: 'Cryptocurrency' }
-  ]
-
   const getPaymentMethodIcon = (method) => {
     switch (method) {
       case 'card':
-        return <CreditCard className="w-4 h-4" />
+        return <CreditCard className="w-5 h-5" />
       case 'mobile_money':
-        return <Receipt className="w-4 h-4" />
+        return <Smartphone className="w-5 h-5" />
+      case 'bank_transfer':
+        return <Building className="w-5 h-5" />
       case 'crypto':
-        return <DollarSign className="w-4 h-4" />
+        return <Bitcoin className="w-5 h-5" />
       default:
-        return <DollarSign className="w-4 h-4" />
+        return <DollarSign className="w-5 h-5" />
     }
   }
 
@@ -112,9 +125,9 @@ export const CustomerPayments = () => {
   }
 
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-NG', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'NGN'
     }).format(amount || 0)
   }
 
@@ -150,6 +163,27 @@ export const CustomerPayments = () => {
     }
   }
 
+  const exportPayments = () => {
+    const csv = [
+      ['Reference', 'Amount', 'Method', 'Status', 'Date', 'Description'],
+      ...payments.map(payment => [
+        payment.reference || payment.id,
+        payment.amount,
+        payment.payment_method,
+        payment.status,
+        format(new Date(payment.created_at), 'yyyy-MM-dd'),
+        payment.description
+      ])
+    ].map(row => row.join(',')).join('\n')
+
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `payments_${format(new Date(), 'yyyy-MM-dd')}.csv`
+    a.click()
+  }
+
   if (loading) {
     return (
       <DashboardLayout>
@@ -160,119 +194,149 @@ export const CustomerPayments = () => {
     )
   }
 
-  const totalPaid = payments
-    .filter(p => p.status === 'completed')
-    .reduce((sum, p) => sum + p.amount, 0)
-
-  const pendingAmount = payments
-    .filter(p => p.status === 'pending')
-    .reduce((sum, p) => sum + p.amount, 0)
-
   return (
     <DashboardLayout>
       <PageHeader
         title="Payments"
-        description="Manage your insurance payments and transaction history"
+        description="Manage your insurance payments and billing"
         actions={
-          <Button onClick={() => setShowPaymentModal(true)}>
-            <CreditCard className="w-4 h-4 mr-2" />
-            Make Payment
-          </Button>
+          <div className="flex gap-3">
+            <Button variant="secondary" onClick={exportPayments}>
+              <Download className="w-4 h-4 mr-2" />
+              Export
+            </Button>
+            <Button variant="primary" onClick={() => setShowPaymentModal(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Make Payment
+            </Button>
+          </div>
         }
       />
 
-      {/* Payment Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <Card className="p-6 bg-gray-800/50 border-gray-700">
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-3 bg-green-500/20 rounded-lg">
-              <CheckCircle className="w-6 h-6 text-green-400" />
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <Card>
+          <CardBody>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-400">Total Paid</p>
+                <p className="text-2xl font-bold text-gray-100">
+                  {formatCurrency(stats.totalPaid)}
+                </p>
+              </div>
+              <div className="p-3 bg-green-900/20 rounded-lg">
+                <CheckCircle className="w-6 h-6 text-green-400" />
+              </div>
             </div>
-          </div>
-          <h3 className="text-sm font-medium text-gray-400">Total Paid</h3>
-          <p className="text-2xl font-bold text-gray-100 mt-1">{formatCurrency(totalPaid)}</p>
-          <p className="text-xs text-gray-500 mt-2">Lifetime payments</p>
+          </CardBody>
         </Card>
 
-        <Card className="p-6 bg-gray-800/50 border-gray-700">
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-3 bg-yellow-500/20 rounded-lg">
-              <Clock className="w-6 h-6 text-yellow-400" />
+        <Card>
+          <CardBody>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-400">Pending</p>
+                <p className="text-2xl font-bold text-gray-100">
+                  {formatCurrency(stats.pendingPayments)}
+                </p>
+              </div>
+              <div className="p-3 bg-yellow-900/20 rounded-lg">
+                <Clock className="w-6 h-6 text-yellow-400" />
+              </div>
             </div>
-          </div>
-          <h3 className="text-sm font-medium text-gray-400">Pending</h3>
-          <p className="text-2xl font-bold text-gray-100 mt-1">{formatCurrency(pendingAmount)}</p>
-          <p className="text-xs text-gray-500 mt-2">Awaiting processing</p>
+          </CardBody>
         </Card>
 
-        <Card className="p-6 bg-gray-800/50 border-gray-700">
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-3 bg-cyan-500/20 rounded-lg">
-              <Calendar className="w-6 h-6 text-cyan-400" />
+        <Card>
+          <CardBody>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-400">Last Payment</p>
+                <p className="text-lg font-bold text-gray-100">
+                  {stats.lastPayment 
+                    ? format(new Date(stats.lastPayment.created_at), 'MMM d')
+                    : 'N/A'}
+                </p>
+              </div>
+              <div className="p-3 bg-blue-900/20 rounded-lg">
+                <Calendar className="w-6 h-6 text-blue-400" />
+              </div>
             </div>
-          </div>
-          <h3 className="text-sm font-medium text-gray-400">Next Due</h3>
-          <p className="text-2xl font-bold text-gray-100 mt-1">Apr 1, 2024</p>
-          <p className="text-xs text-gray-500 mt-2">Monthly premium</p>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardBody>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-400">Next Due</p>
+                <p className="text-lg font-bold text-gray-100">Apr 1</p>
+              </div>
+              <div className="p-3 bg-purple-900/20 rounded-lg">
+                <TrendingUp className="w-6 h-6 text-purple-400" />
+              </div>
+            </div>
+          </CardBody>
         </Card>
       </div>
 
       {/* Payment History */}
-      <Card className="bg-gray-800/50 border-gray-700">
+      <Card>
         <div className="px-6 py-4 border-b border-gray-700">
           <h2 className="text-lg font-semibold text-gray-100">Payment History</h2>
         </div>
         <CardBody>
-          {payments.length === 0 ? (
-            <EmptyState
-              icon={CreditCard}
-              title="No payments yet"
-              description="Your payment history will appear here"
-              action={
-                <Button size="sm" onClick={() => setShowPaymentModal(true)}>
-                  Make First Payment
-                </Button>
-              }
-            />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="text-left border-b border-gray-700">
-                    <th className="pb-3 text-sm font-medium text-gray-400">Date</th>
-                    <th className="pb-3 text-sm font-medium text-gray-400">Description</th>
-                    <th className="pb-3 text-sm font-medium text-gray-400">Method</th>
-                    <th className="pb-3 text-sm font-medium text-gray-400">Amount</th>
-                    <th className="pb-3 text-sm font-medium text-gray-400">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-700">
-                  {payments.map((payment) => (
-                    <tr key={payment.id} className="hover:bg-gray-700/30 transition-colors">
-                      <td className="py-4 text-sm text-gray-300">
-                        {format(new Date(payment.created_at), 'MMM d, yyyy')}
-                      </td>
-                      <td className="py-4 text-sm text-gray-100">
-                        {payment.description}
-                      </td>
-                      <td className="py-4 text-sm text-gray-300">
-                        <span className="flex items-center gap-2">
-                          {getPaymentMethodIcon(payment.payment_method)}
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="text-left border-b border-gray-700">
+                  <th className="pb-3 text-sm font-medium text-gray-400">Reference</th>
+                  <th className="pb-3 text-sm font-medium text-gray-400">Amount</th>
+                  <th className="pb-3 text-sm font-medium text-gray-400">Method</th>
+                  <th className="pb-3 text-sm font-medium text-gray-400">Status</th>
+                  <th className="pb-3 text-sm font-medium text-gray-400">Date</th>
+                  <th className="pb-3 text-sm font-medium text-gray-400">Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map((payment) => (
+                  <tr key={payment.id} className="border-b border-gray-700/50">
+                    <td className="py-4">
+                      <span className="text-sm font-medium text-gray-100">
+                        {payment.reference || `#${payment.id}`}
+                      </span>
+                    </td>
+                    <td className="py-4">
+                      <span className="text-sm font-bold text-gray-100">
+                        {formatCurrency(payment.amount)}
+                      </span>
+                    </td>
+                    <td className="py-4">
+                      <div className="flex items-center gap-2">
+                        {getPaymentMethodIcon(payment.payment_method)}
+                        <span className="text-sm text-gray-300 capitalize">
                           {payment.payment_method.replace('_', ' ')}
                         </span>
-                      </td>
-                      <td className="py-4 text-sm font-semibold text-cyan-400">
-                        {formatCurrency(payment.amount)}
-                      </td>
-                      <td className="py-4">
-                        {getStatusBadge(payment.status)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                      </div>
+                    </td>
+                    <td className="py-4">
+                      {getStatusBadge(payment.status)}
+                    </td>
+                    <td className="py-4">
+                      <span className="text-sm text-gray-300">
+                        {format(new Date(payment.created_at), 'MMM d, yyyy')}
+                      </span>
+                    </td>
+                    <td className="py-4">
+                      <span className="text-sm text-gray-300">
+                        {payment.description}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </CardBody>
       </Card>
 
@@ -280,52 +344,59 @@ export const CustomerPayments = () => {
       <Modal
         isOpen={showPaymentModal}
         onClose={() => setShowPaymentModal(false)}
-        title="Make Payment"
+        title="Make a Payment"
         size="md"
-        className="bg-gray-800 text-gray-100"
       >
-        <form onSubmit={handlePaymentSubmit} className="space-y-6">
-          <Alert type="info" title="Demo Mode" className="bg-blue-900/20 border-blue-500/50">
-            This is a demo payment interface. In production, this would integrate with real payment gateways.
-          </Alert>
-
-          <Input
-            label="Amount"
-            type="number"
-            value={paymentForm.amount}
-            onChange={(e) => setPaymentForm(prev => ({ ...prev, amount: e.target.value }))}
-            placeholder="0.00"
-            min="0.01"
-            step="0.01"
-            required
-            className="bg-gray-700/50 border-gray-600 text-white placeholder-gray-400 focus:border-cyan-500"
-          />
+        <form onSubmit={handlePaymentSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Amount
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">₦</span>
+              <input
+                type="number"
+                value={paymentForm.amount}
+                onChange={(e) => setPaymentForm(prev => ({ ...prev, amount: e.target.value }))}
+                className="w-full pl-8 pr-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-white"
+                placeholder="Enter amount"
+                required
+              />
+            </div>
+          </div>
 
           <Select
             label="Payment Method"
             value={paymentForm.paymentMethod}
             onChange={(e) => setPaymentForm(prev => ({ ...prev, paymentMethod: e.target.value }))}
-            options={paymentMethodOptions}
-            className="bg-gray-700/50 border-gray-600 text-white focus:border-cyan-500"
+            options={[
+              { value: 'card', label: 'Credit/Debit Card' },
+              { value: 'bank_transfer', label: 'Bank Transfer' },
+              { value: 'mobile_money', label: 'Mobile Money' },
+              { value: 'crypto', label: 'Cryptocurrency' }
+            ]}
           />
 
-          <Input
-            label="Description"
-            type="text"
-            value={paymentForm.description}
-            onChange={(e) => setPaymentForm(prev => ({ ...prev, description: e.target.value }))}
-            placeholder="e.g., Monthly premium payment"
-            required
-            className="bg-gray-700/50 border-gray-600 text-white placeholder-gray-400 focus:border-cyan-500"
-          />
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Description
+            </label>
+            <input
+              type="text"
+              value={paymentForm.description}
+              onChange={(e) => setPaymentForm(prev => ({ ...prev, description: e.target.value }))}
+              className="w-full px-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-white"
+              placeholder="What is this payment for?"
+              required
+            />
+          </div>
 
-          <div className="flex items-center justify-end gap-3 pt-4">
+          <div className="flex justify-end gap-3 pt-4">
             <Button
               type="button"
               variant="ghost"
               onClick={() => setShowPaymentModal(false)}
               disabled={paymentLoading}
-              className="text-gray-300 hover:text-white"
             >
               Cancel
             </Button>
@@ -333,9 +404,9 @@ export const CustomerPayments = () => {
               type="submit"
               variant="primary"
               loading={paymentLoading}
-              disabled={paymentLoading}
             >
-              {paymentLoading ? 'Processing...' : 'Proceed to Payment'}
+              <CreditCard className="w-4 h-4 mr-2" />
+              Proceed to Payment
             </Button>
           </div>
         </form>

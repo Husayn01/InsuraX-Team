@@ -1,138 +1,146 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { 
-  FileText, Calendar, MapPin, DollarSign, AlertTriangle,
-  CheckCircle, XCircle, Clock, MessageSquare, ChevronLeft,
-  Send, Loader, Upload, Download, ExternalLink, Shield,
-  Brain, TrendingUp, AlertCircle, Eye
+  FileText, Download, MessageSquare, Clock, CheckCircle, 
+  XCircle, AlertTriangle, ChevronRight, Calendar, DollarSign,
+  MapPin, User, Paperclip, Eye, ArrowLeft, Send, Plus,
+  Shield, TrendingUp, AlertCircle, Brain, Loader
 } from 'lucide-react'
+import { useAuth } from '@contexts/AuthContext'
+import { supabaseHelpers } from '@services/supabase'
 import { DashboardLayout, PageHeader } from '@shared/layouts'
 import { 
   Button, Card, CardBody, Badge, LoadingSpinner, 
-  Modal, Alert, Tabs, TabsList, TabsTrigger, TabsContent 
+  Modal, Input, Alert, Select
 } from '@shared/components'
 import { format } from 'date-fns'
-import { supabaseHelpers } from '@services/supabase'
-import { useAuth } from '@contexts/AuthContext'
 
 export const InsurerClaimDetails = () => {
-  const { claimId } = useParams()
-  const navigate = useNavigate()
+  const { id } = useParams()
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [claim, setClaim] = useState(null)
   const [customerProfile, setCustomerProfile] = useState(null)
   const [processing, setProcessing] = useState(false)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
-  
-  // Modal states
-  const [showDecisionModal, setShowDecisionModal] = useState(false)
+  const [showApprovalModal, setShowApprovalModal] = useState(false)
+  const [showRejectionModal, setShowRejectionModal] = useState(false)
   const [showMessageModal, setShowMessageModal] = useState(false)
-  const [showDocumentModal, setShowDocumentModal] = useState(false)
-  
-  // Form states
-  const [decision, setDecision] = useState('')
-  const [decisionReason, setDecisionReason] = useState('')
   const [message, setMessage] = useState('')
-  const [selectedDocument, setSelectedDocument] = useState(null)
+  const [rejectionReason, setRejectionReason] = useState('')
+  const [approvalAmount, setApprovalAmount] = useState('')
+  const [success, setSuccess] = useState('')
+  const [error, setError] = useState('')
 
   useEffect(() => {
     fetchClaimDetails()
-  }, [claimId])
+  }, [id])
 
   const fetchClaimDetails = async () => {
     try {
       setLoading(true)
-      setError('')
       
       // Fetch claim details
-      const { data: claimData, error: claimError } = await supabaseHelpers.getClaim(claimId)
-      
-      if (claimError) throw claimError
-      if (!claimData) throw new Error('Claim not found')
-      
+      const claimData = await supabaseHelpers.getClaim(id)
+      if (!claimData) {
+        setError('Claim not found')
+        return
+      }
       setClaim(claimData)
+      setApprovalAmount(claimData.claim_data?.estimatedAmount || '')
       
       // Fetch customer profile
-      const { data: profileData, error: profileError } = await supabaseHelpers.getProfile(claimData.customer_id)
-      
-      if (!profileError && profileData) {
-        setCustomerProfile(profileData)
+      if (claimData.customer_id) {
+        const profile = await supabaseHelpers.getProfile(claimData.customer_id)
+        setCustomerProfile(profile)
       }
-      
     } catch (error) {
       console.error('Error fetching claim details:', error)
-      setError(error.message || 'Failed to load claim details')
+      setError('Failed to load claim details')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleDecision = async () => {
-    if (!decision || !decisionReason) {
-      alert('Please select a decision and provide a reason')
-      return
-    }
-
+  const handleApprove = async () => {
     setProcessing(true)
     setError('')
     
     try {
-      // Update claim with decision
-      const updatedClaim = {
-        status: decision,
-        insurer_id: user.id,
+      await supabaseHelpers.updateClaim(id, {
+        status: 'approved',
         claim_data: {
           ...claim.claim_data,
-          decision: {
-            status: decision,
-            reason: decisionReason,
-            decidedBy: user.id,
-            decidedAt: new Date().toISOString()
-          }
+          approvedAmount: parseFloat(approvalAmount),
+          approvedBy: user.id,
+          approvedAt: new Date().toISOString()
         }
-      }
-      
-      const { data, error } = await supabaseHelpers.updateClaim(claimId, updatedClaim)
-      
-      if (error) throw error
+      })
       
       // Create notification for customer
-      const notificationTitle = decision === 'approved' 
-        ? 'Claim Approved!' 
-        : 'Claim Update'
-      
-      const notificationMessage = decision === 'approved'
-        ? `Your claim ${claim.claim_data.claimNumber} has been approved. ${decisionReason}`
-        : `Your claim ${claim.claim_data.claimNumber} has been reviewed. ${decisionReason}`
-      
       await supabaseHelpers.createClaimNotification(
         claim.customer_id,
-        claimId,
-        'claim_update',
-        notificationTitle,
-        notificationMessage,
-        { 
-          status: decision,
-          decidedBy: user.email 
-        }
+        id,
+        'claim_approved',
+        'Claim Approved',
+        `Your claim #${claim.claim_data?.claimNumber} has been approved for ₦${parseFloat(approvalAmount).toLocaleString('en-NG')}.`,
+        { approvedAmount: parseFloat(approvalAmount) }
       )
       
-      setSuccess(`Claim ${decision} successfully!`)
-      setClaim(data)
-      setShowDecisionModal(false)
-      setDecision('')
-      setDecisionReason('')
+      setSuccess('Claim approved successfully')
+      setShowApprovalModal(false)
       
-      // Redirect after 2 seconds
-      setTimeout(() => {
-        navigate('/insurer/claims')
-      }, 2000)
+      // Refresh claim data
+      fetchClaimDetails()
       
     } catch (error) {
-      console.error('Error processing decision:', error)
-      setError(error.message || 'Failed to process decision')
+      console.error('Error approving claim:', error)
+      setError('Failed to approve claim')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  const handleReject = async () => {
+    if (!rejectionReason.trim()) {
+      setError('Please provide a reason for rejection')
+      return
+    }
+    
+    setProcessing(true)
+    setError('')
+    
+    try {
+      await supabaseHelpers.updateClaim(id, {
+        status: 'rejected',
+        claim_data: {
+          ...claim.claim_data,
+          rejectionReason,
+          rejectedBy: user.id,
+          rejectedAt: new Date().toISOString()
+        }
+      })
+      
+      // Create notification for customer
+      await supabaseHelpers.createClaimNotification(
+        claim.customer_id,
+        id,
+        'claim_rejected',
+        'Claim Rejected',
+        `Your claim #${claim.claim_data?.claimNumber} has been rejected. Reason: ${rejectionReason}`,
+        { rejectionReason }
+      )
+      
+      setSuccess('Claim rejected')
+      setShowRejectionModal(false)
+      setRejectionReason('')
+      
+      // Refresh claim data
+      fetchClaimDetails()
+      
+    } catch (error) {
+      console.error('Error rejecting claim:', error)
+      setError('Failed to reject claim')
     } finally {
       setProcessing(false)
     }
@@ -143,35 +151,14 @@ export const InsurerClaimDetails = () => {
     
     setProcessing(true)
     try {
-      // Create notification for customer
       await supabaseHelpers.createClaimNotification(
         claim.customer_id,
-        claimId,
+        id,
         'message',
-        'New Message from Insurer',
+        'New Message from Adjuster',
         message,
-        { 
-          from: user.email,
-          timestamp: new Date().toISOString()
-        }
+        { fromAdjuster: true }
       )
-      
-      // Update claim with message in history
-      const messageHistory = claim.claim_data.messages || []
-      messageHistory.push({
-        id: Date.now().toString(),
-        sender: user.email,
-        role: 'insurer',
-        message: message,
-        timestamp: new Date().toISOString()
-      })
-      
-      await supabaseHelpers.updateClaim(claimId, {
-        claim_data: {
-          ...claim.claim_data,
-          messages: messageHistory
-        }
-      })
       
       setSuccess('Message sent successfully')
       setMessage('')
@@ -238,9 +225,9 @@ export const InsurerClaimDetails = () => {
   }
 
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-NG', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'NGN'
     }).format(amount || 0)
   }
 
@@ -254,68 +241,57 @@ export const InsurerClaimDetails = () => {
     )
   }
 
-  if (!claim) {
+  if (error && !claim) {
     return (
       <DashboardLayout>
-        <div className="text-center py-12">
-          <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-100 mb-2">Claim not found</h3>
-          <Link to="/insurer/claims">
-            <Button variant="primary">Back to Claims</Button>
-          </Link>
+        <div className="flex flex-col items-center justify-center h-64">
+          <AlertCircle className="w-12 h-12 text-red-400 mb-4" />
+          <p className="text-lg text-gray-300">{error}</p>
+          <Button variant="secondary" onClick={() => navigate('/insurer/claims')} className="mt-4">
+            Back to Claims
+          </Button>
         </div>
       </DashboardLayout>
     )
   }
 
-  const aiAnalysis = claim.claim_data?.aiAnalysis
-
   return (
     <DashboardLayout>
       <PageHeader
-        title={
-          <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate('/insurer/claims')}
-              className="text-gray-400 hover:text-white"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </Button>
-            <span>Claim #{claim.claim_data?.claimNumber || claimId.slice(0, 8)}</span>
-          </div>
-        }
-        description={`Submitted on ${format(new Date(claim.created_at), 'MMM d, yyyy')}`}
+        title={`Claim #${claim?.claim_data?.claimNumber || id}`}
+        description="Review and process insurance claim"
         actions={
           <div className="flex gap-3">
-            <Button
-              variant="secondary"
-              onClick={() => setShowMessageModal(true)}
-            >
-              <MessageSquare className="w-4 h-4 mr-2" />
-              Message Customer
-            </Button>
-            {claim.status === 'submitted' || claim.status === 'processing' ? (
-              <Button
-                variant="primary"
-                onClick={() => setShowDecisionModal(true)}
-              >
-                Make Decision
+            <Link to="/insurer/claims">
+              <Button variant="ghost">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Claims
               </Button>
-            ) : null}
+            </Link>
+            {claim?.status === 'submitted' && (
+              <>
+                <Button 
+                  variant="danger" 
+                  onClick={() => setShowRejectionModal(true)}
+                >
+                  <XCircle className="w-4 h-4 mr-2" />
+                  Reject
+                </Button>
+                <Button 
+                  variant="success" 
+                  onClick={() => setShowApprovalModal(true)}
+                >
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Approve
+                </Button>
+              </>
+            )}
           </div>
         }
       />
 
-      {error && (
-        <Alert type="error" title="Error" className="mb-6 bg-red-900/20 border-red-500/50">
-          {error}
-        </Alert>
-      )}
-
       {success && (
-        <Alert type="success" title="Success" className="mb-6 bg-green-900/20 border-green-500/50">
+        <Alert type="success" title="Success" className="mb-6">
           {success}
         </Alert>
       )}
@@ -323,191 +299,196 @@ export const InsurerClaimDetails = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Status Card */}
+          {/* Claim Overview */}
           <Card>
-            <CardBody>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-gray-100">Claim Status</h2>
+            <div className="px-6 py-4 border-b border-gray-700">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-gray-100">Claim Overview</h2>
                 <Badge variant={getStatusColor(claim.status)}>
-                  <div className="flex items-center gap-2">
-                    {getStatusIcon(claim.status)}
-                    <span className="capitalize">{claim.status}</span>
-                  </div>
+                  {getStatusIcon(claim.status)}
+                  <span className="ml-2">{claim.status}</span>
                 </Badge>
               </div>
-              
-              {claim.claim_data?.decision && (
-                <div className="p-4 bg-gray-700/50 rounded-lg">
-                  <p className="text-sm font-medium text-gray-300 mb-1">Decision Reason</p>
-                  <p className="text-gray-100">{claim.claim_data.decision.reason}</p>
-                  <p className="text-xs text-gray-400 mt-2">
-                    Decided on {format(new Date(claim.claim_data.decision.decidedAt), 'MMM d, yyyy h:mm a')}
-                  </p>
+            </div>
+            <CardBody>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm text-gray-400">Claim Type</p>
+                    <p className="font-medium text-gray-100 capitalize">
+                      {claim.claim_data?.claimType || 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-400">Incident Date</p>
+                    <p className="font-medium text-gray-100 flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-gray-400" />
+                      {claim.claim_data?.incidentDate 
+                        ? format(new Date(claim.claim_data.incidentDate), 'MMM d, yyyy')
+                        : 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-400">Date Submitted</p>
+                    <p className="font-medium text-gray-100 flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-gray-400" />
+                      {format(new Date(claim.created_at), 'MMM d, yyyy h:mm a')}
+                    </p>
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm text-gray-400">Estimated Amount</p>
+                    <p className="font-medium text-gray-100 flex items-center gap-2">
+                      <DollarSign className="w-4 h-4 text-gray-400" />
+                      {formatCurrency(claim.claim_data?.estimatedAmount)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-400">Location</p>
+                    <p className="font-medium text-gray-100 flex items-start gap-2">
+                      <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
+                      {claim.claim_data?.incidentLocation || 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-400">Claimant</p>
+                    <p className="font-medium text-gray-100 flex items-center gap-2">
+                      <User className="w-4 h-4 text-gray-400" />
+                      {claim.claim_data?.claimantName || 'N/A'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div className="mt-6 pt-6 border-t border-gray-700">
+                <h3 className="font-medium text-gray-100 mb-3">Damage Description</h3>
+                <p className="text-gray-300 leading-relaxed">
+                  {claim.claim_data?.damageDescription || 'No description provided'}
+                </p>
+              </div>
+
+              {/* Vehicle Info if applicable */}
+              {claim.claim_data?.vehicleInfo && (
+                <div className="mt-6 pt-6 border-t border-gray-700">
+                  <h3 className="font-medium text-gray-100 mb-3">Vehicle Information</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div>
+                      <p className="text-gray-400">Make</p>
+                      <p className="font-medium text-gray-100">
+                        {claim.claim_data.vehicleInfo.make || 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400">Model</p>
+                      <p className="font-medium text-gray-100">
+                        {claim.claim_data.vehicleInfo.model || 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400">Year</p>
+                      <p className="font-medium text-gray-100">
+                        {claim.claim_data.vehicleInfo.year || 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400">License Plate</p>
+                      <p className="font-medium text-gray-100">
+                        {claim.claim_data.vehicleInfo.licensePlate || 'N/A'}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
             </CardBody>
           </Card>
 
           {/* AI Analysis */}
-          {aiAnalysis && (
+          {claim.claim_data?.aiAnalysis && (
             <Card>
               <div className="px-6 py-4 border-b border-gray-700">
-                <h2 className="text-lg font-semibold text-gray-100 flex items-center gap-2">
+                <div className="flex items-center gap-2">
                   <Brain className="w-5 h-5 text-cyan-400" />
-                  AI Analysis Results
-                </h2>
+                  <h2 className="text-lg font-semibold text-gray-100">AI Analysis</h2>
+                </div>
               </div>
               <CardBody>
-                <Tabs defaultValue="fraud" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="fraud">Fraud Assessment</TabsTrigger>
-                    <TabsTrigger value="extracted">Extracted Data</TabsTrigger>
-                    <TabsTrigger value="recommendations">Recommendations</TabsTrigger>
-                  </TabsList>
-                  
-                  <TabsContent value="fraud" className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-4 bg-gray-700/50 rounded-lg">
-                        <p className="text-sm text-gray-400 mb-1">Risk Score</p>
-                        <p className="text-2xl font-bold text-gray-100">
-                          {(aiAnalysis.fraudAssessment?.score * 100).toFixed(0)}%
-                        </p>
-                      </div>
-                      <div className="p-4 bg-gray-700/50 rounded-lg">
-                        <p className="text-sm text-gray-400 mb-1">Risk Level</p>
-                        <p className={`text-2xl font-bold capitalize ${getRiskLevelColor(aiAnalysis.fraudAssessment?.riskLevel)}`}>
-                          {aiAnalysis.fraudAssessment?.riskLevel}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    {aiAnalysis.fraudAssessment?.flags?.length > 0 && (
-                      <div>
-                        <h4 className="font-medium text-gray-100 mb-2">Risk Indicators</h4>
-                        <ul className="space-y-2">
-                          {aiAnalysis.fraudAssessment.flags.map((flag, index) => (
-                            <li key={index} className="flex items-start gap-2">
-                              <AlertTriangle className="w-4 h-4 text-orange-400 flex-shrink-0 mt-0.5" />
-                              <span className="text-sm text-gray-300">{flag}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </TabsContent>
-                  
-                  <TabsContent value="extracted" className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      {Object.entries(aiAnalysis.extractedData || {}).map(([key, value]) => (
-                        <div key={key} className="p-3 bg-gray-700/50 rounded-lg">
-                          <p className="text-sm text-gray-400 mb-1">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
-                          <p className="text-gray-100 font-medium">{value || 'N/A'}</p>
-                        </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div className="bg-gray-700/30 rounded-lg p-4">
+                    <p className="text-sm text-gray-400 mb-1">Risk Level</p>
+                    <p className={`font-bold text-lg ${getRiskLevelColor(
+                      claim.claim_data.aiAnalysis.fraudAssessment?.riskLevel
+                    )}`}>
+                      {claim.claim_data.aiAnalysis.fraudAssessment?.riskLevel || 'N/A'}
+                    </p>
+                  </div>
+                  <div className="bg-gray-700/30 rounded-lg p-4">
+                    <p className="text-sm text-gray-400 mb-1">Fraud Score</p>
+                    <p className="font-bold text-lg text-gray-100">
+                      {(claim.claim_data.aiAnalysis.fraudAssessment?.fraudScore * 100 || 0).toFixed(0)}%
+                    </p>
+                  </div>
+                  <div className="bg-gray-700/30 rounded-lg p-4">
+                    <p className="text-sm text-gray-400 mb-1">Confidence</p>
+                    <p className="font-bold text-lg text-gray-100">
+                      {claim.claim_data.aiAnalysis.extractedData?.confidence || 'N/A'}
+                    </p>
+                  </div>
+                </div>
+
+                {claim.claim_data.aiAnalysis.fraudAssessment?.redFlags && (
+                  <div>
+                    <h4 className="font-medium text-red-400 mb-2">Red Flags</h4>
+                    <ul className="space-y-2">
+                      {claim.claim_data.aiAnalysis.fraudAssessment.redFlags.map((flag, index) => (
+                        <li key={index} className="flex items-start gap-2">
+                          <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5" />
+                          <span className="text-sm text-gray-300">{flag}</span>
+                        </li>
                       ))}
-                    </div>
-                  </TabsContent>
-                  
-                  <TabsContent value="recommendations" className="space-y-3">
-                    {aiAnalysis.recommendations?.map((rec, index) => (
-                      <div key={index} className="flex items-start gap-3 p-3 bg-gray-700/50 rounded-lg">
-                        <TrendingUp className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
-                        <p className="text-sm text-gray-300">{rec}</p>
-                      </div>
-                    ))}
-                  </TabsContent>
-                </Tabs>
-                
-                {aiAnalysis.processingTime && (
-                  <p className="text-xs text-gray-500 mt-4">
-                    AI processing completed in {(aiAnalysis.processingTime / 1000).toFixed(2)}s
-                  </p>
+                    </ul>
+                  </div>
+                )}
+
+                {claim.claim_data.aiAnalysis.categorization?.processingRecommendations && (
+                  <div className="mt-4">
+                    <h4 className="font-medium text-cyan-400 mb-2">Recommendations</h4>
+                    <ul className="space-y-2">
+                      {claim.claim_data.aiAnalysis.categorization.processingRecommendations.map((rec, index) => (
+                        <li key={index} className="flex items-start gap-2">
+                          <CheckCircle className="w-4 h-4 text-green-400 mt-0.5" />
+                          <span className="text-sm text-gray-300">{rec}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </CardBody>
             </Card>
           )}
 
-          {/* Claim Details */}
-          <Card>
-            <div className="px-6 py-4 border-b border-gray-700">
-              <h2 className="text-lg font-semibold text-gray-100">Claim Details</h2>
-            </div>
-            <CardBody className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-400 mb-1">Claim Type</p>
-                  <p className="font-medium text-gray-100 capitalize">{claim.claim_data?.claimType}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-400 mb-1">Incident Date</p>
-                  <p className="font-medium text-gray-100">
-                    {claim.claim_data?.incidentDate 
-                      ? format(new Date(claim.claim_data.incidentDate), 'MMM d, yyyy')
-                      : 'N/A'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-400 mb-1">Estimated Amount</p>
-                  <p className="font-medium text-gray-100">
-                    {formatCurrency(claim.claim_data?.estimatedAmount)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-400 mb-1">Location</p>
-                  <p className="font-medium text-gray-100">
-                    {claim.claim_data?.incidentLocation || 'Not specified'}
-                  </p>
-                </div>
-              </div>
-              
-              <div>
-                <p className="text-sm text-gray-400 mb-2">Description</p>
-                <p className="text-gray-100">{claim.claim_data?.damageDescription}</p>
-              </div>
-            </CardBody>
-          </Card>
-
           {/* Documents */}
-          {claim.documents?.length > 0 && (
+          {claim.documents && claim.documents.length > 0 && (
             <Card>
               <div className="px-6 py-4 border-b border-gray-700">
-                <h2 className="text-lg font-semibold text-gray-100">
-                  Documents ({claim.documents.length})
-                </h2>
+                <h2 className="text-lg font-semibold text-gray-100">Supporting Documents</h2>
               </div>
               <CardBody>
                 <div className="space-y-3">
                   {claim.documents.map((doc, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg hover:bg-gray-700/70 transition-colors"
-                    >
+                    <div key={index} className="flex items-center justify-between p-3 bg-gray-700/30 rounded-lg">
                       <div className="flex items-center gap-3">
-                        <FileText className="w-5 h-5 text-cyan-400" />
+                        <Paperclip className="w-5 h-5 text-gray-400" />
                         <div>
-                          <p className="font-medium text-gray-100">
-                            Document {index + 1}
-                          </p>
-                          <p className="text-xs text-gray-400">
-                            Uploaded with claim
-                          </p>
+                          <p className="text-sm font-medium text-gray-100">Document {index + 1}</p>
+                          <p className="text-xs text-gray-400">Uploaded on submission</p>
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => window.open(doc, '_blank')}
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => window.open(doc, '_blank')}
-                        >
-                          <Download className="w-4 h-4" />
-                        </Button>
-                      </div>
+                      <Button variant="ghost" size="sm">
+                        <Eye className="w-4 h-4 mr-2" />
+                        View
+                      </Button>
                     </div>
                   ))}
                 </div>
@@ -550,101 +531,135 @@ export const InsurerClaimDetails = () => {
                     : 'N/A'}
                 </p>
               </div>
+              <Button 
+                variant="secondary" 
+                className="w-full"
+                onClick={() => setShowMessageModal(true)}
+              >
+                <MessageSquare className="w-4 h-4 mr-2" />
+                Send Message
+              </Button>
             </CardBody>
           </Card>
 
-          {/* Quick Actions */}
+          {/* Actions */}
           <Card>
             <div className="px-6 py-4 border-b border-gray-700">
               <h2 className="text-lg font-semibold text-gray-100">Quick Actions</h2>
             </div>
             <CardBody className="space-y-3">
-              <Button
-                variant="secondary"
-                className="w-full"
-                onClick={() => navigate(`/insurer/customers/${claim.customer_id}`)}
-              >
-                View Customer Profile
+              <Button variant="secondary" className="w-full">
+                <FileText className="w-4 h-4 mr-2" />
+                Request Additional Docs
               </Button>
-              <Button
-                variant="secondary"
-                className="w-full"
-                onClick={() => window.print()}
-              >
-                Print Claim Details
+              <Button variant="secondary" className="w-full">
+                <Shield className="w-4 h-4 mr-2" />
+                Flag for Investigation
+              </Button>
+              <Button variant="secondary" className="w-full">
+                <TrendingUp className="w-4 h-4 mr-2" />
+                View Claim History
               </Button>
             </CardBody>
           </Card>
         </div>
       </div>
 
-      {/* Decision Modal */}
+      {/* Approval Modal */}
       <Modal
-        isOpen={showDecisionModal}
-        onClose={() => setShowDecisionModal(false)}
-        title="Make Claim Decision"
+        isOpen={showApprovalModal}
+        onClose={() => setShowApprovalModal(false)}
+        title="Approve Claim"
         size="md"
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-3">
-              Decision
-            </label>
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                onClick={() => setDecision('approved')}
-                className={`p-4 rounded-lg border-2 transition-all ${
-                  decision === 'approved' 
-                    ? 'border-green-500 bg-green-500/10' 
-                    : 'border-gray-600 hover:border-green-500'
-                }`}
-              >
-                <CheckCircle className="w-6 h-6 text-green-500 mx-auto mb-2" />
-                <p className="font-medium">Approve</p>
-              </button>
-              <button
-                onClick={() => setDecision('rejected')}
-                className={`p-4 rounded-lg border-2 transition-all ${
-                  decision === 'rejected' 
-                    ? 'border-red-500 bg-red-500/10' 
-                    : 'border-gray-600 hover:border-red-500'
-                }`}
-              >
-                <XCircle className="w-6 h-6 text-red-500 mx-auto mb-2" />
-                <p className="font-medium">Reject</p>
-              </button>
-            </div>
-          </div>
-
-          <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
-              Reason / Notes
+              Approval Amount
             </label>
-            <textarea
-              value={decisionReason}
-              onChange={(e) => setDecisionReason(e.target.value)}
-              rows={4}
-              className="w-full px-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white placeholder-gray-400"
-              placeholder="Provide reason for your decision..."
-              required
-            />
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">₦</span>
+              <input
+                type="number"
+                value={approvalAmount}
+                onChange={(e) => setApprovalAmount(e.target.value)}
+                className="w-full pl-8 pr-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-white"
+                placeholder="Enter approved amount"
+              />
+            </div>
+            <p className="text-xs text-gray-400 mt-1">
+              Original requested amount: {formatCurrency(claim?.claim_data?.estimatedAmount)}
+            </p>
           </div>
 
-          <div className="flex justify-end gap-3">
+          {error && (
+            <Alert type="error" title="Error">
+              {error}
+            </Alert>
+          )}
+
+          <div className="flex justify-end gap-3 pt-4">
             <Button
               variant="ghost"
-              onClick={() => setShowDecisionModal(false)}
+              onClick={() => setShowApprovalModal(false)}
               disabled={processing}
             >
               Cancel
             </Button>
             <Button
-              variant="primary"
-              onClick={handleDecision}
+              variant="success"
+              onClick={handleApprove}
               loading={processing}
-              disabled={!decision || !decisionReason || processing}
             >
-              Confirm Decision
+              <CheckCircle className="w-4 h-4 mr-2" />
+              Approve Claim
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Rejection Modal */}
+      <Modal
+        isOpen={showRejectionModal}
+        onClose={() => setShowRejectionModal(false)}
+        title="Reject Claim"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Rejection Reason
+            </label>
+            <textarea
+              value={rejectionReason}
+              onChange={(e) => setRejectionReason(e.target.value)}
+              rows={4}
+              className="w-full px-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-white resize-none"
+              placeholder="Explain why this claim is being rejected..."
+            />
+          </div>
+
+          {error && (
+            <Alert type="error" title="Error">
+              {error}
+            </Alert>
+          )}
+
+          <div className="flex justify-end gap-3 pt-4">
+            <Button
+              variant="ghost"
+              onClick={() => setShowRejectionModal(false)}
+              disabled={processing}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={handleReject}
+              loading={processing}
+            >
+              <XCircle className="w-4 h-4 mr-2" />
+              Reject Claim
             </Button>
           </div>
         </div>
@@ -666,11 +681,18 @@ export const InsurerClaimDetails = () => {
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               rows={4}
-              className="w-full px-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white placeholder-gray-400"
-              placeholder="Type your message to the customer..."
+              className="w-full px-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-white resize-none"
+              placeholder="Type your message here..."
             />
           </div>
-          <div className="flex justify-end gap-3">
+
+          {error && (
+            <Alert type="error" title="Error">
+              {error}
+            </Alert>
+          )}
+
+          <div className="flex justify-end gap-3 pt-4">
             <Button
               variant="ghost"
               onClick={() => setShowMessageModal(false)}
@@ -682,7 +704,6 @@ export const InsurerClaimDetails = () => {
               variant="primary"
               onClick={handleSendMessage}
               loading={processing}
-              disabled={!message.trim() || processing}
             >
               <Send className="w-4 h-4 mr-2" />
               Send Message

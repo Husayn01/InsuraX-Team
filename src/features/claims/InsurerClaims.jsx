@@ -59,14 +59,14 @@ export const InsurerClaims = () => {
           claim_data: {
             claimNumber: 'CLM-2024-001',
             claimType: 'auto',
-            claimantName: 'John Doe',
-            estimatedAmount: 5000,
+            claimantName: 'Ibrahim Sani',
+            estimatedAmount: 350000,
             incidentDate: '2024-03-15',
             damageDescription: 'Front bumper damage from collision'
           },
           customer: {
-            name: 'John Doe',
-            email: 'john@example.com',
+            name: 'Ibrahim Sani',
+            email: 'ibrahim.sani@example.com',
             totalClaims: 3,
             riskScore: 'low'
           },
@@ -83,14 +83,14 @@ export const InsurerClaims = () => {
           claim_data: {
             claimNumber: 'CLM-2024-002',
             claimType: 'health',
-            claimantName: 'Jane Smith',
-            estimatedAmount: 12000,
+            claimantName: 'Adaeze Okafor',
+            estimatedAmount: 850000,
             incidentDate: '2024-03-18',
             damageDescription: 'Emergency surgery required'
           },
           customer: {
-            name: 'Jane Smith',
-            email: 'jane@example.com',
+            name: 'Adaeze Okafor',
+            email: 'adaeze.okafor@example.com',
             totalClaims: 1,
             riskScore: 'medium'
           },
@@ -107,14 +107,14 @@ export const InsurerClaims = () => {
           claim_data: {
             claimNumber: 'CLM-2024-003',
             claimType: 'property',
-            claimantName: 'Robert Johnson',
-            estimatedAmount: 3500,
+            claimantName: 'Chinedu Eze',
+            estimatedAmount: 250000,
             incidentDate: '2024-03-10',
             damageDescription: 'Water damage from burst pipe'
           },
           customer: {
-            name: 'Robert Johnson',
-            email: 'robert@example.com',
+            name: 'Chinedu Eze',
+            email: 'chinedu.eze@example.com',
             totalClaims: 5,
             riskScore: 'low'
           },
@@ -251,7 +251,7 @@ export const InsurerClaims = () => {
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'NGN'
     }).format(amount || 0)
   }
 

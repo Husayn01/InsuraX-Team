@@ -41,82 +41,82 @@ export const InsurerCustomers = () => {
       const mockCustomers = [
         {
           id: '1',
-          name: 'John Doe',
-          email: 'john.doe@example.com',
+          name: 'Ibrahim Sani',
+          email: 'ibrahim.sani@example.com',
           phone: '+234 801 234 5678',
           address: '45 Victoria Island, Lagos',
           memberSince: '2020-01-15',
           status: 'active',
           riskScore: 'low',
           policies: [
-            { type: 'auto', number: 'POL-AUTO-001', premium: 500, status: 'active' },
-            { type: 'health', number: 'POL-HEALTH-001', premium: 300, status: 'active' }
+            { type: 'auto', number: 'POL-AUTO-001', premium: 35000, status: 'active' },
+            { type: 'health', number: 'POL-HEALTH-001', premium: 21000, status: 'active' }
           ],
           claims: {
             total: 3,
             approved: 2,
             rejected: 0,
             pending: 1,
-            totalAmount: 15000
+            totalAmount: 1050000
           },
           lastActivity: '2024-03-18',
           lifetime: {
-            premiumsPaid: 25000,
-            claimsPaid: 12000,
-            profitability: 13000
+            premiumsPaid: 1750000,
+            claimsPaid: 840000,
+            profitability: 910000
           }
         },
         {
           id: '2',
-          name: 'Jane Smith',
-          email: 'jane.smith@example.com',
+          name: 'Adaeze Okafor',
+          email: 'adaeze.okafor@example.com',
           phone: '+234 802 345 6789',
           address: '123 Lekki Phase 1, Lagos',
           memberSince: '2021-06-20',
           status: 'active',
           riskScore: 'medium',
           policies: [
-            { type: 'health', number: 'POL-HEALTH-002', premium: 400, status: 'active' }
+            { type: 'health', number: 'POL-HEALTH-002', premium: 28000, status: 'active' }
           ],
           claims: {
             total: 1,
             approved: 1,
             rejected: 0,
             pending: 0,
-            totalAmount: 8000
+            totalAmount: 560000
           },
           lastActivity: '2024-03-15',
           lifetime: {
-            premiumsPaid: 10000,
-            claimsPaid: 8000,
-            profitability: 2000
+            premiumsPaid: 700000,
+            claimsPaid: 560000,
+            profitability: 140000
           }
         },
         {
           id: '3',
-          name: 'Robert Johnson',
-          email: 'robert.j@example.com',
+          name: 'Chinedu Eze',
+          email: 'chinedu.eze@example.com',
           phone: '+234 803 456 7890',
           address: '78 Ikoyi Crescent, Lagos',
           memberSince: '2019-03-10',
           status: 'active',
           riskScore: 'high',
           policies: [
-            { type: 'property', number: 'POL-PROP-001', premium: 1000, status: 'active' },
-            { type: 'auto', number: 'POL-AUTO-002', premium: 600, status: 'active' }
+            { type: 'property', number: 'POL-PROP-001', premium: 70000, status: 'active' },
+            { type: 'auto', number: 'POL-AUTO-002', premium: 42000, status: 'active' }
           ],
           claims: {
             total: 8,
             approved: 5,
             rejected: 2,
             pending: 1,
-            totalAmount: 45000
+            totalAmount: 3150000
           },
           lastActivity: '2024-03-20',
           lifetime: {
-            premiumsPaid: 48000,
-            claimsPaid: 35000,
-            profitability: 13000
+            premiumsPaid: 3360000,
+            claimsPaid: 2450000,
+            profitability: 910000
           }
         }
       ]
@@ -168,9 +168,9 @@ export const InsurerCustomers = () => {
   }
 
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-NG', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'NGN'
     }).format(amount || 0)
   }
 
@@ -295,87 +295,95 @@ export const InsurerCustomers = () => {
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
-                    <span className="text-white font-bold text-lg">
+                    <span className="text-white font-medium text-lg">
                       {customer.name.split(' ').map(n => n[0]).join('')}
                     </span>
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900">{customer.name}</h3>
-                    <p className="text-sm text-gray-500">Member since {format(new Date(customer.memberSince), 'MMM yyyy')}</p>
+                    <h3 className="font-semibold text-lg">{customer.name}</h3>
+                    <p className="text-sm text-gray-600">{customer.email}</p>
                   </div>
                 </div>
                 <Badge variant={getRiskColor(customer.riskScore)}>
-                  {customer.riskScore} risk
+                  <Shield className="w-3 h-3 mr-1" />
+                  {customer.riskScore} Risk
                 </Badge>
               </div>
 
               <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className="text-sm">
-                  <div className="flex items-center gap-2 text-gray-600 mb-2">
-                    <Mail className="w-4 h-4" />
-                    {customer.email}
-                  </div>
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <Phone className="w-4 h-4" />
-                    {customer.phone}
-                  </div>
-                </div>
-                <div className="text-sm">
-                  <div className="flex items-center gap-2 text-gray-600 mb-2">
-                    <MapPin className="w-4 h-4" />
-                    {customer.address}
-                  </div>
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <Calendar className="w-4 h-4" />
-                    Last active: {format(new Date(customer.lastActivity), 'MMM d, yyyy')}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4 mb-4 pb-4 border-b border-gray-200">
-                <div className="text-center">
-                  <p className="text-sm text-gray-600">Policies</p>
-                  <p className="text-lg font-semibold">{customer.policies.length}</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-sm text-gray-600">Total Claims</p>
-                  <p className="text-lg font-semibold">{customer.claims.total}</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-sm text-gray-600">Claim Ratio</p>
-                  <p className="text-lg font-semibold">{calculateClaimRatio(customer)}%</p>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Lifetime Value</p>
-                  <div className="flex items-center gap-4 mt-1">
-                    <span className="text-sm">
-                      <span className="text-gray-500">Paid:</span> 
-                      <span className="font-semibold text-green-600 ml-1">
-                        {formatCurrency(customer.lifetime.premiumsPaid)}
-                      </span>
-                    </span>
-                    <span className="text-sm">
-                      <span className="text-gray-500">Claims:</span> 
-                      <span className="font-semibold text-red-600 ml-1">
-                        {formatCurrency(customer.lifetime.claimsPaid)}
-                      </span>
-                    </span>
+                  <p className="text-sm text-gray-600">Member Since</p>
+                  <p className="font-medium">{format(new Date(customer.memberSince), 'MMM yyyy')}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Last Activity</p>
+                  <p className="font-medium">{format(new Date(customer.lastActivity), 'MMM d, yyyy')}</p>
+                </div>
+              </div>
+
+              <div className="space-y-2 mb-4">
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Phone className="w-4 h-4" />
+                  {customer.phone}
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <MapPin className="w-4 h-4" />
+                  {customer.address}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4 py-4 border-t border-gray-200">
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-blue-600">{customer.policies.length}</p>
+                  <p className="text-sm text-gray-600">Policies</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-green-600">{customer.claims.total}</p>
+                  <p className="text-sm text-gray-600">Claims</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-purple-600">{calculateClaimRatio(customer)}%</p>
+                  <p className="text-sm text-gray-600">Approval</p>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 -mx-6 -mb-6 mt-4 p-4 rounded-b-lg">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-gray-600">Lifetime Premiums</p>
+                    <p className="font-semibold">{formatCurrency(customer.lifetime.premiumsPaid)}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600">Claims Paid</p>
+                    <p className="font-semibold">{formatCurrency(customer.lifetime.claimsPaid)}</p>
                   </div>
                 </div>
-                <Button
-                  size="sm"
-                  variant="primary"
-                  onClick={() => {
-                    setSelectedCustomer(customer)
-                    setShowCustomerModal(true)
-                  }}
-                >
-                  <Eye className="w-4 h-4 mr-1" />
-                  View
-                </Button>
+                <div className="mt-4 flex gap-2">
+                  <Button 
+                    variant="secondary" 
+                    size="sm" 
+                    className="flex-1"
+                    onClick={() => {
+                      setSelectedCustomer(customer)
+                      setShowCustomerModal(true)
+                    }}
+                  >
+                    <Eye className="w-4 h-4 mr-1" />
+                    View Details
+                  </Button>
+                  <Button 
+                    variant="primary" 
+                    size="sm" 
+                    className="flex-1"
+                    onClick={() => {
+                      setSelectedCustomer(customer)
+                      setShowMessageModal(true)
+                    }}
+                  >
+                    <MessageSquare className="w-4 h-4 mr-1" />
+                    Message
+                  </Button>
+                </div>
               </div>
             </CardBody>
           </Card>
@@ -383,42 +391,41 @@ export const InsurerCustomers = () => {
       </div>
 
       {/* Customer Details Modal */}
-      <Modal
-        isOpen={showCustomerModal}
-        onClose={() => {
-          setShowCustomerModal(false)
-          setSelectedCustomer(null)
-        }}
-        title="Customer Details"
+      <Modal 
+        isOpen={showCustomerModal} 
+        onClose={() => setShowCustomerModal(false)}
+        title={selectedCustomer?.name}
         size="lg"
       >
         {selectedCustomer && (
           <div className="space-y-6">
-            {/* Customer Header */}
-            <div className="flex items-center gap-4 pb-4 border-b border-gray-700">
-              <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
-                <span className="text-white font-bold text-2xl">
-                  {selectedCustomer.name.split(' ').map(n => n[0]).join('')}
-                </span>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-gray-600">Email</p>
+                <p className="font-medium">{selectedCustomer.email}</p>
               </div>
-              <div className="flex-1">
-                <h3 className="text-xl font-semibold text-gray-100">{selectedCustomer.name}</h3>
-                <p className="text-gray-400">Customer ID: {selectedCustomer.id}</p>
+              <div>
+                <p className="text-sm text-gray-600">Phone</p>
+                <p className="font-medium">{selectedCustomer.phone}</p>
               </div>
-              <Badge variant={getRiskColor(selectedCustomer.riskScore)}>
-                {selectedCustomer.riskScore} risk
-              </Badge>
+              <div>
+                <p className="text-sm text-gray-600">Address</p>
+                <p className="font-medium">{selectedCustomer.address}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Status</p>
+                <Badge variant="success">{selectedCustomer.status}</Badge>
+              </div>
             </div>
 
-            {/* Policies */}
             <div>
-              <h4 className="font-semibold text-gray-100 mb-3">Active Policies</h4>
+              <h4 className="font-semibold mb-3">Active Policies</h4>
               <div className="space-y-2">
                 {selectedCustomer.policies.map((policy, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-gray-700/30 rounded-lg">
+                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div>
-                      <p className="font-medium text-gray-100 capitalize">{policy.type} Insurance</p>
-                      <p className="text-sm text-gray-400">{policy.number}</p>
+                      <p className="font-medium capitalize">{policy.type} Insurance</p>
+                      <p className="text-sm text-gray-600">{policy.number}</p>
                     </div>
                     <div className="text-right">
                       <p className="font-semibold">{formatCurrency(policy.premium)}/month</p>
@@ -429,91 +436,49 @@ export const InsurerCustomers = () => {
               </div>
             </div>
 
-            {/* Claims Summary */}
             <div>
-              <h4 className="font-semibold text-gray-100 mb-3">Claims Summary</h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-gray-700/30 rounded-lg">
-                  <p className="text-sm text-gray-400">Total Claims</p>
-                  <p className="text-2xl font-bold text-gray-100">{selectedCustomer.claims.total}</p>
+              <h4 className="font-semibold mb-3">Claims History</h4>
+              <div className="grid grid-cols-4 gap-4 text-center">
+                <div className="bg-blue-50 p-3 rounded-lg">
+                  <p className="text-2xl font-bold text-blue-600">{selectedCustomer.claims.total}</p>
+                  <p className="text-sm text-gray-600">Total</p>
                 </div>
-                <div className="p-4 bg-gray-700/30 rounded-lg">
-                  <p className="text-sm text-gray-400">Total Amount</p>
-                  <p className="text-2xl font-bold text-gray-100">
-                    {formatCurrency(selectedCustomer.claims.totalAmount)}
-                  </p>
+                <div className="bg-green-50 p-3 rounded-lg">
+                  <p className="text-2xl font-bold text-green-600">{selectedCustomer.claims.approved}</p>
+                  <p className="text-sm text-gray-600">Approved</p>
                 </div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 mt-2">
-                <div className="p-3 bg-green-500/10 rounded-lg text-center">
-                  <p className="text-xs text-green-400">Approved</p>
-                  <p className="text-lg font-semibold text-green-500">{selectedCustomer.claims.approved}</p>
+                <div className="bg-red-50 p-3 rounded-lg">
+                  <p className="text-2xl font-bold text-red-600">{selectedCustomer.claims.rejected}</p>
+                  <p className="text-sm text-gray-600">Rejected</p>
                 </div>
-                <div className="p-3 bg-yellow-500/10 rounded-lg text-center">
-                  <p className="text-xs text-yellow-400">Pending</p>
-                  <p className="text-lg font-semibold text-yellow-500">{selectedCustomer.claims.pending}</p>
-                </div>
-                <div className="p-3 bg-red-500/10 rounded-lg text-center">
-                  <p className="text-xs text-red-400">Rejected</p>
-                  <p className="text-lg font-semibold text-red-500">{selectedCustomer.claims.rejected}</p>
+                <div className="bg-yellow-50 p-3 rounded-lg">
+                  <p className="text-2xl font-bold text-yellow-600">{selectedCustomer.claims.pending}</p>
+                  <p className="text-sm text-gray-600">Pending</p>
                 </div>
               </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex gap-3">
-              <Button variant="primary" className="flex-1">
-                <FileText className="w-4 h-4 mr-2" />
-                View Claims
-              </Button>
-              <Button 
-                variant="secondary" 
-                className="flex-1"
-                onClick={() => {
-                  setShowCustomerModal(false)
-                  setShowMessageModal(true)
-                }}
-              >
-                <MessageSquare className="w-4 h-4 mr-2" />
-                Send Message
-              </Button>
             </div>
           </div>
         )}
       </Modal>
 
       {/* Message Modal */}
-      <Modal
-        isOpen={showMessageModal}
+      <Modal 
+        isOpen={showMessageModal} 
         onClose={() => setShowMessageModal(false)}
         title={`Send Message to ${selectedCustomer?.name}`}
-        size="md"
       >
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Subject
-            </label>
-            <Input
-              placeholder="Enter message subject..."
-              className="w-full"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Message
-            </label>
-            <textarea
-              rows={4}
-              className="w-full px-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white placeholder-gray-400"
-              placeholder="Type your message..."
-            />
-          </div>
-          <div className="flex justify-end gap-3">
+          <textarea
+            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+            rows={4}
+            placeholder="Type your message here..."
+          />
+          <div className="flex gap-3 justify-end">
             <Button variant="ghost" onClick={() => setShowMessageModal(false)}>
               Cancel
             </Button>
             <Button variant="primary">
+              <MessageSquare className="w-4 h-4 mr-2" />
               Send Message
             </Button>
           </div>
@@ -522,5 +487,3 @@ export const InsurerCustomers = () => {
     </DashboardLayout>
   )
 }
-
-export default InsurerCustomers

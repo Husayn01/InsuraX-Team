@@ -39,7 +39,7 @@ export const InsurerSettings = () => {
     processingTimeTarget: 3,
     requireSecondApproval: true,
     enableAIRecommendations: true,
-    defaultCurrency: 'USD',
+    defaultCurrency: 'NGN',
     timezone: 'Africa/Lagos'
   })
 
@@ -62,11 +62,10 @@ export const InsurerSettings = () => {
   })
 
   const [team, setTeam] = useState([
-    { id: '1', name: 'John Manager', email: 'john@insurance.com', role: 'admin', status: 'active' },
-    { id: '2', name: 'Jane Adjuster', email: 'jane@insurance.com', role: 'adjuster', status: 'active' },
-    { id: '3', name: 'Bob Reviewer', email: 'bob@insurance.com', role: 'reviewer', status: 'active' }
+    { id: '1', name: 'Kemi Adeyemi', email: 'kemi.adeyemi@insurance.com', role: 'admin', status: 'active' },
+    { id: '2', name: 'Tunde Ogunbiyi', email: 'tunde.ogunbiyi@insurance.com', role: 'adjuster', status: 'active' },
+    { id: '3', name: 'Ngozi Okonkwo', email: 'ngozi.okonkwo@insurance.com', role: 'reviewer', status: 'active' }
   ])
-
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
     newPassword: '',
@@ -177,12 +176,7 @@ export const InsurerSettings = () => {
           )}
 
           <div className="flex justify-end">
-            <Button
-              variant="primary"
-              onClick={handleSaveSettings}
-              loading={loading}
-              disabled={loading}
-            >
+            <Button onClick={handleSaveSettings} loading={loading}>
               <Save className="w-4 h-4 mr-2" />
               Save Changes
             </Button>
@@ -195,7 +189,7 @@ export const InsurerSettings = () => {
   const renderBusinessSettings = () => (
     <Card>
       <div className="px-6 py-4 border-b border-gray-700">
-        <h2 className="text-lg font-semibold text-gray-100">Business Rules & Limits</h2>
+        <h2 className="text-lg font-semibold text-gray-100">Business Rules & Settings</h2>
       </div>
       <CardBody>
         <div className="space-y-6">
@@ -205,7 +199,7 @@ export const InsurerSettings = () => {
                 Claim Approval Limit
               </label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">$</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">₦</span>
                 <input
                   type="number"
                   value={businessSettings.claimApprovalLimit}
@@ -213,7 +207,7 @@ export const InsurerSettings = () => {
                   className="w-full pl-8 pr-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-white"
                 />
               </div>
-              <p className="text-xs text-gray-400 mt-1">Maximum amount that can be approved without senior review</p>
+              <p className="text-xs text-gray-400 mt-1">Maximum amount that can be approved by a single adjuster</p>
             </div>
 
             <div>
@@ -221,7 +215,7 @@ export const InsurerSettings = () => {
                 Auto-Approval Threshold
               </label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">$</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">₦</span>
                 <input
                   type="number"
                   value={businessSettings.autoApprovalThreshold}
@@ -270,10 +264,10 @@ export const InsurerSettings = () => {
               value={businessSettings.defaultCurrency}
               onChange={(e) => handleBusinessSettingsChange('defaultCurrency', e.target.value)}
               options={[
+                { value: 'NGN', label: 'NGN - Nigerian Naira' },
                 { value: 'USD', label: 'USD - US Dollar' },
                 { value: 'EUR', label: 'EUR - Euro' },
-                { value: 'GBP', label: 'GBP - British Pound' },
-                { value: 'NGN', label: 'NGN - Nigerian Naira' }
+                { value: 'GBP', label: 'GBP - British Pound' }
               ]}
             />
 
@@ -310,7 +304,7 @@ export const InsurerSettings = () => {
             <div className="flex items-center justify-between p-4 bg-gray-700/30 rounded-lg">
               <div>
                 <h4 className="font-medium text-gray-100">Enable AI Recommendations</h4>
-                <p className="text-sm text-gray-400">Show NeuroClaim AI suggestions for claims</p>
+                <p className="text-sm text-gray-400">Use AI to suggest claim decisions</p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
@@ -324,13 +318,14 @@ export const InsurerSettings = () => {
             </div>
           </div>
 
+          {saveSuccess && (
+            <Alert type="success" title="Settings Saved">
+              Your business settings have been updated successfully.
+            </Alert>
+          )}
+
           <div className="flex justify-end">
-            <Button
-              variant="primary"
-              onClick={handleSaveSettings}
-              loading={loading}
-              disabled={loading}
-            >
+            <Button onClick={handleSaveSettings} loading={loading}>
               <Save className="w-4 h-4 mr-2" />
               Save Changes
             </Button>
@@ -348,19 +343,27 @@ export const InsurerSettings = () => {
       <CardBody>
         <div className="space-y-6">
           <div className="space-y-4">
-            {[
-              { key: 'newClaims', label: 'New Claims', description: 'Get notified when new claims are submitted' },
-              { key: 'highRiskClaims', label: 'High Risk Claims', description: 'Alert for claims with high fraud risk' },
-              { key: 'fraudAlerts', label: 'Fraud Alerts', description: 'Immediate alerts for suspected fraudulent activity' },
-              { key: 'customerMessages', label: 'Customer Messages', description: 'Messages from customers regarding claims' },
-              { key: 'systemUpdates', label: 'System Updates', description: 'Platform updates and maintenance notifications' },
-              { key: 'weeklyReports', label: 'Weekly Reports', description: 'Weekly summary of claims and performance' },
-              { key: 'monthlyAnalytics', label: 'Monthly Analytics', description: 'Detailed monthly analytics report' }
-            ].map(({ key, label, description }) => (
+            {Object.entries({
+              newClaims: 'New claim submissions',
+              highRiskClaims: 'High-risk claim alerts',
+              fraudAlerts: 'Fraud detection alerts',
+              customerMessages: 'Customer messages',
+              systemUpdates: 'System updates',
+              weeklyReports: 'Weekly performance reports',
+              monthlyAnalytics: 'Monthly analytics digest'
+            }).map(([key, label]) => (
               <div key={key} className="flex items-center justify-between p-4 bg-gray-700/30 rounded-lg">
                 <div>
                   <h4 className="font-medium text-gray-100">{label}</h4>
-                  <p className="text-sm text-gray-400">{description}</p>
+                  <p className="text-sm text-gray-400">
+                    {key === 'newClaims' && 'Get notified when new claims are submitted'}
+                    {key === 'highRiskClaims' && 'Alerts for claims with high fraud risk'}
+                    {key === 'fraudAlerts' && 'Real-time fraud detection notifications'}
+                    {key === 'customerMessages' && 'Messages from customers about claims'}
+                    {key === 'systemUpdates' && 'Important system updates and maintenance'}
+                    {key === 'weeklyReports' && 'Weekly summary of claim processing'}
+                    {key === 'monthlyAnalytics' && 'Monthly performance analytics'}
+                  </p>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input
@@ -375,32 +378,30 @@ export const InsurerSettings = () => {
             ))}
           </div>
 
-          <div className="pt-4 border-t border-gray-700">
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Email Digest Frequency
-            </label>
+          <div>
             <Select
+              label="Email Digest Frequency"
               value={notifications.emailDigest}
               onChange={(e) => setNotifications(prev => ({ ...prev, emailDigest: e.target.value }))}
               options={[
-                { value: 'realtime', label: 'Real-time' },
-                { value: 'hourly', label: 'Hourly' },
                 { value: 'daily', label: 'Daily' },
                 { value: 'weekly', label: 'Weekly' },
+                { value: 'monthly', label: 'Monthly' },
                 { value: 'never', label: 'Never' }
               ]}
             />
           </div>
 
+          {saveSuccess && (
+            <Alert type="success" title="Settings Saved">
+              Your notification preferences have been updated.
+            </Alert>
+          )}
+
           <div className="flex justify-end">
-            <Button
-              variant="primary"
-              onClick={handleSaveSettings}
-              loading={loading}
-              disabled={loading}
-            >
+            <Button onClick={handleSaveSettings} loading={loading}>
               <Save className="w-4 h-4 mr-2" />
-              Save Preferences
+              Save Changes
             </Button>
           </div>
         </div>
@@ -416,95 +417,83 @@ export const InsurerSettings = () => {
         </div>
         <CardBody>
           <div className="space-y-6">
-            {/* Password */}
-            <div className="flex items-center justify-between p-4 bg-gray-700/30 rounded-lg">
-              <div className="flex items-center gap-3">
-                <Key className="w-5 h-5 text-gray-400" />
-                <div>
-                  <h4 className="font-medium text-gray-100">Password</h4>
-                  <p className="text-sm text-gray-400">Last changed 45 days ago</p>
-                </div>
-              </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setShowPasswordModal(true)}
-              >
-                Change Password
-              </Button>
-            </div>
-
-            {/* Two-Factor Authentication */}
-            <div className="flex items-center justify-between p-4 bg-gray-700/30 rounded-lg">
-              <div className="flex items-center gap-3">
-                <Shield className="w-5 h-5 text-gray-400" />
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-gray-700/30 rounded-lg">
                 <div>
                   <h4 className="font-medium text-gray-100">Two-Factor Authentication</h4>
-                  <p className="text-sm text-gray-400">
-                    {security.twoFactorEnabled ? 'Enabled - Extra security for your account' : 'Add an extra layer of security'}
-                  </p>
+                  <p className="text-sm text-gray-400">Add an extra layer of security to your account</p>
                 </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={security.twoFactorEnabled}
+                    onChange={(e) => setSecurity(prev => ({ ...prev, twoFactorEnabled: e.target.checked }))}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-cyan-500/25 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-500"></div>
+                </label>
               </div>
+
+              <div className="flex items-center justify-between p-4 bg-gray-700/30 rounded-lg">
+                <div>
+                  <h4 className="font-medium text-gray-100">IP Whitelisting</h4>
+                  <p className="text-sm text-gray-400">Restrict access to specific IP addresses</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={security.ipWhitelisting}
+                    onChange={(e) => setSecurity(prev => ({ ...prev, ipWhitelisting: e.target.checked }))}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-cyan-500/25 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-500"></div>
+                </label>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-gray-700/30 rounded-lg">
+                <div>
+                  <h4 className="font-medium text-gray-100">API Access</h4>
+                  <p className="text-sm text-gray-400">Enable API access for third-party integrations</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={security.apiAccess}
+                    onChange={(e) => setSecurity(prev => ({ ...prev, apiAccess: e.target.checked }))}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-cyan-500/25 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-500"></div>
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Session Timeout (minutes)
+                </label>
+                <input
+                  type="number"
+                  value={security.sessionTimeout}
+                  onChange={(e) => setSecurity(prev => ({ ...prev, sessionTimeout: parseInt(e.target.value) }))}
+                  className="w-full px-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-white"
+                />
+                <p className="text-xs text-gray-400 mt-1">Automatically log out after this period of inactivity</p>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-gray-700">
               <Button
-                variant={security.twoFactorEnabled ? "secondary" : "primary"}
-                size="sm"
+                variant="secondary"
+                onClick={() => setShowPasswordModal(true)}
+                className="w-full sm:w-auto"
               >
-                {security.twoFactorEnabled ? 'Manage' : 'Enable'}
+                <Key className="w-4 h-4 mr-2" />
+                Change Password
               </Button>
-            </div>
-
-            {/* Session Timeout */}
-            <div className="p-4 bg-gray-700/30 rounded-lg">
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Session Timeout (minutes)
-              </label>
-              <input
-                type="number"
-                value={security.sessionTimeout}
-                onChange={(e) => setSecurity(prev => ({ ...prev, sessionTimeout: parseInt(e.target.value) }))}
-                className="w-32 px-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-white"
-              />
-              <p className="text-xs text-gray-400 mt-1">Automatically log out after this period of inactivity</p>
-            </div>
-
-            {/* IP Whitelisting */}
-            <div className="flex items-center justify-between p-4 bg-gray-700/30 rounded-lg">
-              <div>
-                <h4 className="font-medium text-gray-100">IP Whitelisting</h4>
-                <p className="text-sm text-gray-400">Restrict access to specific IP addresses</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={security.ipWhitelisting}
-                  onChange={(e) => setSecurity(prev => ({ ...prev, ipWhitelisting: e.target.checked }))}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-cyan-500/25 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-500"></div>
-              </label>
-            </div>
-
-            {/* API Access */}
-            <div className="flex items-center justify-between p-4 bg-gray-700/30 rounded-lg">
-              <div>
-                <h4 className="font-medium text-gray-100">API Access</h4>
-                <p className="text-sm text-gray-400">Enable API access for third-party integrations</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={security.apiAccess}
-                  onChange={(e) => setSecurity(prev => ({ ...prev, apiAccess: e.target.checked }))}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-cyan-500/25 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-500"></div>
-              </label>
             </div>
           </div>
         </CardBody>
       </Card>
 
-      {/* Activity Log */}
       <Card>
         <div className="px-6 py-4 border-b border-gray-700">
           <h2 className="text-lg font-semibold text-gray-100">Recent Activity</h2>
@@ -547,48 +536,30 @@ export const InsurerSettings = () => {
         </Button>
       </div>
       <CardBody>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="text-left border-b border-gray-700">
-                <th className="pb-3 text-sm font-medium text-gray-400">Name</th>
-                <th className="pb-3 text-sm font-medium text-gray-400">Email</th>
-                <th className="pb-3 text-sm font-medium text-gray-400">Role</th>
-                <th className="pb-3 text-sm font-medium text-gray-400">Status</th>
-                <th className="pb-3 text-sm font-medium text-gray-400">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-700">
-              {team.map((member) => (
-                <tr key={member.id}>
-                  <td className="py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-full flex items-center justify-center">
-                        <span className="text-white text-sm font-medium">
-                          {member.name.split(' ').map(n => n[0]).join('')}
-                        </span>
-                      </div>
-                      <span className="font-medium text-gray-100">{member.name}</span>
-                    </div>
-                  </td>
-                  <td className="py-4 text-gray-300">{member.email}</td>
-                  <td className="py-4">
-                    <Badge variant="info">{member.role}</Badge>
-                  </td>
-                  <td className="py-4">
-                    <Badge variant={member.status === 'active' ? 'success' : 'error'}>
-                      {member.status}
-                    </Badge>
-                  </td>
-                  <td className="py-4">
-                    <Button variant="ghost" size="sm">
-                      Edit
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-4">
+          {team.map((member) => (
+            <div key={member.id} className="flex items-center justify-between p-4 bg-gray-700/30 rounded-lg">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-full flex items-center justify-center">
+                  <span className="text-white font-medium">
+                    {member.name.split(' ').map(n => n[0]).join('')}
+                  </span>
+                </div>
+                <div>
+                  <h4 className="font-medium text-gray-100">{member.name}</h4>
+                  <p className="text-sm text-gray-400">{member.email}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <Badge variant={member.role === 'admin' ? 'warning' : 'secondary'}>
+                  {member.role}
+                </Badge>
+                <Button variant="ghost" size="sm">
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          ))}
         </div>
       </CardBody>
     </Card>
@@ -602,12 +573,12 @@ export const InsurerSettings = () => {
       />
 
       {/* Tab Navigation */}
-      <div className="flex gap-1 p-1 bg-gray-800/50 rounded-lg mb-6 overflow-x-auto">
+      <div className="flex gap-1 mb-6 overflow-x-auto">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md font-medium transition-all duration-300 whitespace-nowrap ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
               activeTab === tab.id
                 ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white'
                 : 'text-gray-400 hover:text-white'

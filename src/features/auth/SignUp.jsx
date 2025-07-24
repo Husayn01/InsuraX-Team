@@ -168,28 +168,28 @@ export const SignUp = () => {
               />
 
               {formData.role === 'customer' ? (
-                <Input
-                  label="Full Name"
-                  type="text"
-                  name="fullName"
-                  value={formData.fullName}
-                  onChange={handleChange}
-                  placeholder="John Doe"
-                  icon={User}
-                  required
-                />
-              ) : (
-                <Input
-                  label="Company Name"
-                  type="text"
-                  name="companyName"
-                  value={formData.companyName}
-                  onChange={handleChange}
-                  placeholder="Acme Insurance Co."
-                  icon={Building}
-                  required
-                />
-              )}
+              <Input
+                label="Full Name"
+                type="text"
+                name="fullName"
+                value={formData.fullName}
+                onChange={handleChange}
+                placeholder="Adamu Garba"
+                icon={User}
+                required
+              />
+            ) : (
+              <Input
+                label="Company Name"
+                type="text"
+                name="companyName"
+                value={formData.companyName}
+                onChange={handleChange}
+                placeholder="Premier Insurance Nigeria Ltd."
+                icon={Building}
+                required
+              />
+            )}
 
               <Input
                 label="Email"

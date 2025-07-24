@@ -1,19 +1,18 @@
 import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { 
-  FileText, Plus, Search, Filter, Calendar, 
-  DollarSign, Clock, CheckCircle, XCircle, 
-  AlertTriangle, ChevronRight, Download,
-  Shield, Activity, Brain
+  FileText, Plus, Search, Filter, Download, 
+  Calendar, ChevronDown, Eye, Clock, CheckCircle, 
+  XCircle, AlertCircle, Shield
 } from 'lucide-react'
+import { useAuth } from '@contexts/AuthContext'
+import { supabaseHelpers } from '@services/supabase'
 import { DashboardLayout, PageHeader } from '@shared/layouts'
 import { 
   Button, Card, CardBody, Input, Select, Badge, 
-  EmptyState, LoadingSpinner 
+  LoadingSpinner, Alert 
 } from '@shared/components'
 import { format } from 'date-fns'
-import { useAuth } from '@contexts/AuthContext'
-import { supabaseHelpers } from '@services/supabase'
 
 export const CustomerClaims = () => {
   const { user } = useAuth()
@@ -21,49 +20,27 @@ export const CustomerClaims = () => {
   const [claims, setClaims] = useState([])
   const [filteredClaims, setFilteredClaims] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [typeFilter, setTypeFilter] = useState('all')
-  const [sortBy, setSortBy] = useState('date_desc')
-  const [subscription, setSubscription] = useState(null)
+  const [filters, setFilters] = useState({
+    status: 'all',
+    type: 'all',
+    dateRange: 'all'
+  })
 
   useEffect(() => {
     fetchClaims()
-    
-    // Set up real-time subscription
-    const channel = supabaseHelpers.subscribeToClaimsChannel(
-      handleClaimUpdate,
-      { filter: `customer_id=eq.${user.id}` }
-    )
-    
-    setSubscription(channel)
-    
-    return () => {
-      if (subscription) {
-        subscription.unsubscribe()
-      }
-    }
-  }, [user.id])
+  }, [user])
 
   useEffect(() => {
     applyFilters()
-  }, [claims, searchTerm, statusFilter, typeFilter, sortBy])
-
-  const handleClaimUpdate = (payload) => {
-    console.log('Claim update received:', payload)
-    // Refresh claims when updates occur
-    fetchClaims()
-  }
+  }, [claims, searchTerm, filters])
 
   const fetchClaims = async () => {
+    if (!user) return
+    
     try {
       setLoading(true)
-      const { data, error } = await supabaseHelpers.getClaims({
-        customer_id: user.id
-      })
-      
-      if (error) throw error
-      
-      setClaims(data || [])
+      const userClaims = await supabaseHelpers.getClaims(user.id)
+      setClaims(userClaims || [])
     } catch (error) {
       console.error('Error fetching claims:', error)
     } finally {
@@ -76,135 +53,101 @@ export const CustomerClaims = () => {
 
     // Search filter
     if (searchTerm) {
-      filtered = filtered.filter(claim => {
-        const searchLower = searchTerm.toLowerCase()
-        return (
-          claim.claim_data?.claimNumber?.toLowerCase().includes(searchLower) ||
-          claim.claim_data?.claimType?.toLowerCase().includes(searchLower) ||
-          claim.claim_data?.damageDescription?.toLowerCase().includes(searchLower) ||
-          claim.id.toLowerCase().includes(searchLower)
-        )
-      })
+      filtered = filtered.filter(claim => 
+        claim.claim_data?.claimNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        claim.claim_data?.damageDescription?.toLowerCase().includes(searchTerm.toLowerCase())
+      )
     }
 
     // Status filter
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(claim => claim.status === statusFilter)
+    if (filters.status !== 'all') {
+      filtered = filtered.filter(claim => claim.status === filters.status)
     }
 
     // Type filter
-    if (typeFilter !== 'all') {
-      filtered = filtered.filter(claim => claim.claim_data?.claimType === typeFilter)
+    if (filters.type !== 'all') {
+      filtered = filtered.filter(claim => claim.claim_data?.claimType === filters.type)
     }
 
-    // Sort
-    filtered.sort((a, b) => {
-      switch (sortBy) {
-        case 'date_desc':
-          return new Date(b.created_at) - new Date(a.created_at)
-        case 'date_asc':
-          return new Date(a.created_at) - new Date(b.created_at)
-        case 'amount_desc':
-          return (b.claim_data?.estimatedAmount || 0) - (a.claim_data?.estimatedAmount || 0)
-        case 'amount_asc':
-          return (a.claim_data?.estimatedAmount || 0) - (b.claim_data?.estimatedAmount || 0)
-        default:
-          return 0
+    // Date range filter
+    if (filters.dateRange !== 'all') {
+      const now = new Date()
+      const dateLimit = new Date()
+      
+      switch (filters.dateRange) {
+        case '7days':
+          dateLimit.setDate(now.getDate() - 7)
+          break
+        case '30days':
+          dateLimit.setDate(now.getDate() - 30)
+          break
+        case '90days':
+          dateLimit.setDate(now.getDate() - 90)
+          break
       }
-    })
+      
+      filtered = filtered.filter(claim => 
+        new Date(claim.created_at) >= dateLimit
+      )
+    }
 
     setFilteredClaims(filtered)
   }
 
-  const getStatusBadge = (status) => {
-    const config = {
-      submitted: { 
-        color: 'secondary', 
-        icon: Clock, 
-        text: 'Submitted',
-        description: 'Your claim has been received'
-      },
-      processing: { 
-        color: 'warning', 
-        icon: Activity, 
-        text: 'Processing',
-        description: 'AI is analyzing your claim'
-      },
-      approved: { 
-        color: 'success', 
-        icon: CheckCircle, 
-        text: 'Approved',
-        description: 'Your claim has been approved'
-      },
-      rejected: { 
-        color: 'danger', 
-        icon: XCircle, 
-        text: 'Rejected',
-        description: 'Your claim was not approved'
-      },
-      flagged: { 
-        color: 'danger', 
-        icon: AlertTriangle, 
-        text: 'Under Review',
-        description: 'Additional review required'
-      }
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'submitted':
+        return <Clock className="w-4 h-4" />
+      case 'processing':
+        return <Clock className="w-4 h-4 animate-spin" />
+      case 'approved':
+        return <CheckCircle className="w-4 h-4" />
+      case 'rejected':
+        return <XCircle className="w-4 h-4" />
+      default:
+        return <AlertCircle className="w-4 h-4" />
     }
-    
-    const { color, icon: Icon, text } = config[status] || config.submitted
-    
-    return (
-      <Badge variant={color}>
-        <Icon className="w-3 h-3 mr-1" />
-        {text}
-      </Badge>
-    )
   }
 
-  const getAIProcessingBadge = (claim) => {
-    const aiStatus = claim.claim_data?.aiProcessingStatus
-    
-    if (!aiStatus || aiStatus === 'no_documents') return null
-    
-    const config = {
-      pending: { color: 'secondary', icon: Clock, text: 'AI Pending' },
-      completed: { color: 'success', icon: Brain, text: 'AI Processed' },
-      failed: { color: 'danger', icon: AlertTriangle, text: 'AI Error' }
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'submitted':
+        return 'info'
+      case 'processing':
+        return 'warning'
+      case 'approved':
+        return 'success'
+      case 'rejected':
+        return 'error'
+      default:
+        return 'info'
     }
-    
-    const { color, icon: Icon, text } = config[aiStatus] || config.pending
-    
-    return (
-      <Badge variant={color}>
-        <Icon className="w-3 h-3 mr-1" />
-        {text}
-      </Badge>
-    )
   }
 
-  const getRiskIndicator = (claim) => {
+  const getRiskBadge = (claim) => {
     const riskLevel = claim.claim_data?.aiAnalysis?.fraudAssessment?.riskLevel
     
     if (!riskLevel) return null
     
     const colors = {
-      low: 'text-green-400',
-      medium: 'text-yellow-400',
-      high: 'text-orange-400',
-      critical: 'text-red-400'
+      low: 'text-green-400 bg-green-900/50',
+      medium: 'text-yellow-400 bg-yellow-900/50',
+      high: 'text-orange-400 bg-orange-900/50',
+      critical: 'text-red-400 bg-red-900/50'
     }
     
     return (
-      <div className={`flex items-center gap-1 text-sm ${colors[riskLevel] || 'text-gray-400'}`}>
-        <Shield className="w-4 h-4" />
-        <span className="capitalize">{riskLevel} Risk</span>
+      <div className={`px-2 py-1 rounded-full text-xs font-medium ${colors[riskLevel] || colors.medium} flex items-center gap-1`}>
+        <Shield className="w-3 h-3" />
+        <span>{riskLevel} Risk</span>
       </div>
     )
   }
 
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-NG', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'NGN'
     }).format(amount || 0)
   }
 
@@ -263,48 +206,43 @@ export const CustomerClaims = () => {
       {/* Filters */}
       <Card className="mb-6">
         <CardBody>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            <div className="lg:col-span-2">
-              <Input
-                type="search"
-                placeholder="Search claims..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                icon={Search}
-              />
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Input
+              placeholder="Search claims..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              icon={<Search className="w-5 h-5 text-gray-400" />}
+            />
             <Select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              value={filters.status}
+              onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
               options={[
                 { value: 'all', label: 'All Status' },
                 { value: 'submitted', label: 'Submitted' },
                 { value: 'processing', label: 'Processing' },
                 { value: 'approved', label: 'Approved' },
-                { value: 'rejected', label: 'Rejected' },
-                { value: 'flagged', label: 'Under Review' }
+                { value: 'rejected', label: 'Rejected' }
               ]}
             />
             <Select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
+              value={filters.type}
+              onChange={(e) => setFilters(prev => ({ ...prev, type: e.target.value }))}
               options={[
                 { value: 'all', label: 'All Types' },
                 { value: 'auto', label: 'Auto' },
                 { value: 'health', label: 'Health' },
                 { value: 'property', label: 'Property' },
-                { value: 'life', label: 'Life' },
-                { value: 'other', label: 'Other' }
+                { value: 'life', label: 'Life' }
               ]}
             />
             <Select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
+              value={filters.dateRange}
+              onChange={(e) => setFilters(prev => ({ ...prev, dateRange: e.target.value }))}
               options={[
-                { value: 'date_desc', label: 'Newest First' },
-                { value: 'date_asc', label: 'Oldest First' },
-                { value: 'amount_desc', label: 'Highest Amount' },
-                { value: 'amount_asc', label: 'Lowest Amount' }
+                { value: 'all', label: 'All Time' },
+                { value: '7days', label: 'Last 7 Days' },
+                { value: '30days', label: 'Last 30 Days' },
+                { value: '90days', label: 'Last 90 Days' }
               ]}
             />
           </div>
@@ -314,88 +252,71 @@ export const CustomerClaims = () => {
       {/* Claims List */}
       {filteredClaims.length === 0 ? (
         <Card>
-          <CardBody>
-            <EmptyState
-              icon={FileText}
-              title={claims.length === 0 ? "No claims yet" : "No claims found"}
-              description={
-                claims.length === 0 
-                  ? "Start by submitting your first insurance claim"
-                  : "Try adjusting your filters to see more results"
-              }
-              action={
-                claims.length === 0 && (
-                  <Link to="/customer/claims/new">
-                    <Button variant="primary">
-                      <Plus className="w-4 h-4 mr-2" />
-                      Submit First Claim
-                    </Button>
-                  </Link>
-                )
-              }
-            />
+          <CardBody className="text-center py-12">
+            <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-gray-300 mb-2">No claims found</h3>
+            <p className="text-gray-400 mb-6">
+              {searchTerm || filters.status !== 'all' || filters.type !== 'all' || filters.dateRange !== 'all'
+                ? 'Try adjusting your filters'
+                : 'Submit your first claim to get started'}
+            </p>
+            {!searchTerm && filters.status === 'all' && filters.type === 'all' && filters.dateRange === 'all' && (
+              <Link to="/customer/claims/new">
+                <Button variant="primary">
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Claim
+                </Button>
+              </Link>
+            )}
           </CardBody>
         </Card>
       ) : (
-        <div className="space-y-4">
+        <div className="grid gap-4">
           {filteredClaims.map((claim) => (
-            <Card key={claim.id} hoverable>
+            <Card key={claim.id} className="hover:border-cyan-500/50 transition-colors">
               <CardBody>
-                <div className="flex items-start justify-between">
+                <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <h3 className="text-lg font-semibold text-gray-100">
-                        Claim #{claim.claim_data?.claimNumber || claim.id.slice(0, 8)}
+                        {claim.claim_data?.claimNumber || `Claim #${claim.id.slice(0, 8)}`}
                       </h3>
-                      {getStatusBadge(claim.status)}
-                      {getAIProcessingBadge(claim)}
+                      <Badge variant={getStatusColor(claim.status)}>
+                        {getStatusIcon(claim.status)}
+                        <span className="ml-1">{claim.status}</span>
+                      </Badge>
+                      {getRiskBadge(claim)}
                     </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-                      <div className="flex items-center gap-2 text-sm text-gray-400">
-                        <FileText className="w-4 h-4" />
-                        <span className="capitalize">{claim.claim_data?.claimType || 'Unknown'} Claim</span>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-400">Type:</span>
+                        <span className="ml-2 text-gray-200 capitalize">
+                          {claim.claim_data?.claimType || 'N/A'}
+                        </span>
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-gray-400">
-                        <Calendar className="w-4 h-4" />
-                        <span>{format(new Date(claim.created_at), 'MMM d, yyyy')}</span>
+                      <div>
+                        <span className="text-gray-400">Amount:</span>
+                        <span className="ml-2 text-gray-200 font-medium">
+                          {formatCurrency(claim.claim_data?.estimatedAmount)}
+                        </span>
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-gray-400">
-                        <DollarSign className="w-4 h-4" />
-                        <span>{formatCurrency(claim.claim_data?.estimatedAmount)}</span>
+                      <div>
+                        <span className="text-gray-400">Submitted:</span>
+                        <span className="ml-2 text-gray-200">
+                          {format(new Date(claim.created_at), 'MMM d, yyyy')}
+                        </span>
                       </div>
                     </div>
-                    
                     {claim.claim_data?.damageDescription && (
-                      <p className="text-sm text-gray-300 mb-3 line-clamp-2">
+                      <p className="mt-3 text-sm text-gray-400 line-clamp-2">
                         {claim.claim_data.damageDescription}
                       </p>
                     )}
-                    
-                    <div className="flex items-center gap-4">
-                      {getRiskIndicator(claim)}
-                      {claim.documents?.length > 0 && (
-                        <div className="flex items-center gap-1 text-sm text-gray-400">
-                          <FileText className="w-4 h-4" />
-                          <span>{claim.documents.length} Document{claim.documents.length > 1 ? 's' : ''}</span>
-                        </div>
-                      )}
-                      {claim.claim_data?.decision && (
-                        <div className="flex items-center gap-1 text-sm text-gray-400">
-                          <Clock className="w-4 h-4" />
-                          <span>Reviewed {format(new Date(claim.claim_data.decision.decidedAt), 'MMM d')}</span>
-                        </div>
-                      )}
-                    </div>
                   </div>
-                  
-                  <Link 
-                    to={`/customer/claims/${claim.id}`}
-                    className="ml-4"
-                  >
+                  <Link to={`/customer/claims/${claim.id}`}>
                     <Button variant="ghost" size="sm">
-                      View Details
-                      <ChevronRight className="w-4 h-4 ml-1" />
+                      <Eye className="w-4 h-4 mr-2" />
+                      View
                     </Button>
                   </Link>
                 </div>
@@ -404,46 +325,6 @@ export const CustomerClaims = () => {
           ))}
         </div>
       )}
-
-      {/* Summary Stats */}
-      {claims.length > 0 && (
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="bg-gray-800/50">
-            <CardBody className="text-center">
-              <p className="text-sm text-gray-400 mb-1">Total Claims</p>
-              <p className="text-2xl font-bold text-gray-100">{claims.length}</p>
-            </CardBody>
-          </Card>
-          <Card className="bg-gray-800/50">
-            <CardBody className="text-center">
-              <p className="text-sm text-gray-400 mb-1">Approved</p>
-              <p className="text-2xl font-bold text-green-400">
-                {claims.filter(c => c.status === 'approved').length}
-              </p>
-            </CardBody>
-          </Card>
-          <Card className="bg-gray-800/50">
-            <CardBody className="text-center">
-              <p className="text-sm text-gray-400 mb-1">Pending</p>
-              <p className="text-2xl font-bold text-yellow-400">
-                {claims.filter(c => c.status === 'submitted' || c.status === 'processing').length}
-              </p>
-            </CardBody>
-          </Card>
-          <Card className="bg-gray-800/50">
-            <CardBody className="text-center">
-              <p className="text-sm text-gray-400 mb-1">Total Value</p>
-              <p className="text-2xl font-bold text-gray-100">
-                {formatCurrency(
-                  claims.reduce((sum, c) => sum + (c.claim_data?.estimatedAmount || 0), 0)
-                )}
-              </p>
-            </CardBody>
-          </Card>
-        </div>
-      )}
     </DashboardLayout>
   )
 }
-
-export default CustomerClaims

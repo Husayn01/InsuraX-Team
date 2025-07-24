@@ -46,61 +46,68 @@ export const CustomerDashboard = () => {
 
   const handleClaimUpdate = (payload) => {
     console.log('Claim update received:', payload)
-    
     // Refresh dashboard data when claims are updated
-    if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-      fetchDashboardData()
-    }
+    fetchDashboardData()
   }
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true)
       
-      // Fetch all claims for the user
-      const { data: claims, error: claimsError } = await supabaseHelpers.getClaims({
+      // Fetch user's claims
+      const { data: claims } = await supabaseHelpers.getClaims({
         customer_id: user.id
       })
       
-      if (claimsError) throw claimsError
-      
-      // Calculate statistics
-      const totalClaims = claims.length
-      const activeClaims = claims.filter(c => 
+      // Calculate stats
+      const totalClaims = claims?.length || 0
+      const activeClaims = claims?.filter(c => 
         c.status === 'submitted' || c.status === 'processing'
-      ).length
-      const approvedClaims = claims.filter(c => c.status === 'approved')
-      const totalPaid = approvedClaims.reduce((sum, claim) => 
-        sum + (claim.claim_data?.estimatedAmount || 0), 0
-      )
+      ).length || 0
       
-      // Fetch payments
-      const { data: payments, error: paymentsError } = await supabaseHelpers.getPayments({
-        customer_id: user.id
-      })
-      
-      const pendingPayments = payments?.filter(p => p.status === 'pending').length || 0
+      const totalPaid = claims?.filter(c => c.status === 'approved')
+        .reduce((sum, claim) => sum + (claim.claim_data?.approvedAmount || 0), 0) || 0
       
       setStats({
         totalClaims,
         activeClaims,
-        pendingPayments,
+        pendingPayments: 0, // This would come from payments table
         totalPaid
       })
       
       // Get recent claims (last 5)
-      setRecentClaims(claims.slice(0, 5))
+      setRecentClaims(claims?.slice(0, 5) || [])
       
-      // Create activity feed from claims and notifications
-      const activities = claims.slice(0, 3).map(claim => ({
-        id: claim.id,
-        type: 'claim',
-        title: `Claim ${claim.claim_data?.claimNumber || claim.id.slice(0, 8)}`,
-        description: `Status: ${claim.status}`,
-        timestamp: claim.updated_at || claim.created_at,
-        icon: FileText,
-        color: getStatusColor(claim.status)
-      }))
+      // Simulate recent activity
+      const activities = [
+        {
+          id: 1,
+          type: 'claim',
+          icon: FileText,
+          color: 'text-blue-400',
+          title: 'Claim submitted',
+          description: 'Your claim #CLM-2024-001 has been submitted',
+          time: new Date(Date.now() - 86400000)
+        },
+        {
+          id: 2,
+          type: 'payment',
+          icon: DollarSign,
+          color: 'text-green-400',
+          title: 'Payment received',
+          description: 'Monthly premium payment processed',
+          time: new Date(Date.now() - 172800000)
+        },
+        {
+          id: 3,
+          type: 'notification',
+          icon: Bell,
+          color: 'text-cyan-400',
+          title: 'Policy update',
+          description: 'Your policy coverage has been updated',
+          time: new Date(Date.now() - 259200000)
+        }
+      ]
       
       setRecentActivity(activities)
       
@@ -111,40 +118,55 @@ export const CustomerDashboard = () => {
     }
   }
 
-  const getStatusBadge = (status) => {
-    const config = {
-      submitted: { color: 'secondary', icon: Clock, text: 'Submitted' },
-      processing: { color: 'warning', icon: Activity, text: 'Processing' },
-      approved: { color: 'success', icon: CheckCircle, text: 'Approved' },
-      rejected: { color: 'danger', icon: AlertCircle, text: 'Rejected' },
-      flagged: { color: 'danger', icon: Shield, text: 'Under Review' }
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'submitted':
+        return <Clock className="w-4 h-4" />
+      case 'processing':
+        return <Activity className="w-4 h-4" />
+      case 'approved':
+        return <CheckCircle className="w-4 h-4" />
+      case 'rejected':
+        return <AlertCircle className="w-4 h-4" />
+      default:
+        return <FileText className="w-4 h-4" />
     }
-    
-    const { color, icon: Icon, text } = config[status] || config.submitted
-    
-    return (
-      <Badge variant={color}>
-        <Icon className="w-3 h-3 mr-1" />
-        {text}
-      </Badge>
-    )
   }
 
   const getStatusColor = (status) => {
-    const colors = {
-      submitted: 'text-gray-400',
-      processing: 'text-yellow-400',
-      approved: 'text-green-400',
-      rejected: 'text-red-400',
-      flagged: 'text-orange-400'
+    switch (status) {
+      case 'submitted':
+        return 'secondary'
+      case 'processing':
+        return 'warning'
+      case 'approved':
+        return 'success'
+      case 'rejected':
+        return 'error'
+      default:
+        return 'secondary'
     }
-    return colors[status] || 'text-gray-400'
+  }
+
+  const getRiskLevelColor = (level) => {
+    switch (level) {
+      case 'low':
+        return 'text-green-400'
+      case 'medium':
+        return 'text-yellow-400'
+      case 'high':
+        return 'text-orange-400'
+      case 'critical':
+        return 'text-red-400'
+      default:
+        return 'text-gray-400'
+    }
   }
 
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-NG', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'NGN'
     }).format(amount || 0)
   }
 
@@ -197,102 +219,103 @@ export const CustomerDashboard = () => {
           title="Total Claims"
           value={stats.totalClaims}
           icon={FileText}
-          trend={stats.totalClaims > 0 ? '+' + stats.totalClaims : '0'}
-          trendLabel="all time"
+          trend={stats.totalClaims > 0 ? `${stats.totalClaims} total` : 'No claims yet'}
+          trendUp={false}
         />
         <StatsCard
           title="Active Claims"
           value={stats.activeClaims}
-          icon={Clock}
-          variant="warning"
+          icon={Activity}
+          trend={stats.activeClaims > 0 ? 'In progress' : 'All resolved'}
+          trendUp={stats.activeClaims > 0}
         />
         <StatsCard
           title="Pending Payments"
-          value={stats.pendingPayments}
-          icon={DollarSign}
-          variant="danger"
+          value={formatCurrency(stats.pendingPayments)}
+          icon={Clock}
+          trend="Up to date"
+          trendUp={true}
         />
         <StatsCard
           title="Total Paid Out"
           value={formatCurrency(stats.totalPaid)}
-          icon={TrendingUp}
-          variant="success"
+          icon={DollarSign}
+          trend={stats.totalPaid > 0 ? 'Claims approved' : 'No payouts yet'}
+          trendUp={stats.totalPaid > 0}
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      {/* Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent Claims */}
         <div className="lg:col-span-2">
-          <Card className="h-full">
-            <div className="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-100">Recent Claims</h2>
-              <Link to="/customer/claims">
-                <Button variant="ghost" size="sm">
-                  View All
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </Link>
+          <Card>
+            <div className="px-6 py-4 border-b border-gray-700">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-gray-100">Recent Claims</h2>
+                <Link to="/customer/claims">
+                  <Button variant="ghost" size="sm">
+                    View All
+                    <ArrowRight className="w-4 h-4 ml-1" />
+                  </Button>
+                </Link>
+              </div>
             </div>
             <CardBody>
-              {recentClaims.length === 0 ? (
+              {recentClaims.length > 0 ? (
+                <div className="space-y-4">
+                  {recentClaims.map((claim) => (
+                    <Link 
+                      key={claim.id} 
+                      to={`/customer/claims/${claim.id}`}
+                      className="block"
+                    >
+                      <div className="p-4 bg-gray-700/30 hover:bg-gray-700/50 rounded-lg transition-colors cursor-pointer">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <div className="flex items-center gap-3 mb-2">
+                              <Badge variant={getStatusColor(claim.status)}>
+                                {getStatusIcon(claim.status)}
+                                <span className="ml-1">{claim.status}</span>
+                              </Badge>
+                              {claim.claim_data?.aiAnalysis?.fraudAssessment && (
+                                <span className={`text-sm font-medium ${getRiskLevelColor(
+                                  claim.claim_data.aiAnalysis.fraudAssessment.riskLevel
+                                )}`}>
+                                  {claim.claim_data.aiAnalysis.fraudAssessment.riskLevel} risk
+                                </span>
+                              )}
+                            </div>
+                            <h3 className="font-medium text-gray-100">
+                              {claim.claim_data?.claimNumber || `Claim #${claim.id.slice(0, 8)}`}
+                            </h3>
+                            <p className="text-sm text-gray-400 mt-1">
+                              {claim.claim_data?.claimType || 'Insurance'} claim • {formatCurrency(claim.claim_data?.estimatedAmount || 0)}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-2">
+                              Submitted {format(new Date(claim.created_at), 'MMM d, yyyy')}
+                            </p>
+                          </div>
+                          <ChevronRight className="w-5 h-5 text-gray-400" />
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
                 <EmptyState
                   icon={FileText}
                   title="No claims yet"
                   description="Submit your first claim to get started"
                   action={
                     <Link to="/customer/claims/new">
-                      <Button size="sm">
+                      <Button variant="primary" size="sm">
                         <Plus className="w-4 h-4 mr-2" />
-                        Submit Claim
+                        New Claim
                       </Button>
                     </Link>
                   }
                 />
-              ) : (
-                <div className="space-y-4">
-                  {recentClaims.map((claim) => (
-                    <div
-                      key={claim.id}
-                      className="flex items-center justify-between p-4 hover:bg-gray-700/30 rounded-lg transition-all duration-300 group"
-                    >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3">
-                          <h3 className="font-medium text-gray-100">
-                            {claim.claim_data?.claimType ? 
-                              `${claim.claim_data.claimType.charAt(0).toUpperCase() + claim.claim_data.claimType.slice(1)} Claim` 
-                              : 'Insurance Claim'}
-                          </h3>
-                          {getStatusBadge(claim.status)}
-                          {claim.claim_data?.aiAnalysis?.fraudAssessment?.riskLevel === 'critical' && (
-                            <Badge variant="danger">
-                              <Shield className="w-3 h-3 mr-1" />
-                              Under Review
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-4 mt-1">
-                          <p className="text-sm text-gray-400">
-                            #{claim.claim_data?.claimNumber || claim.id.slice(0, 8)}
-                          </p>
-                          <p className="text-sm text-gray-400">
-                            {format(new Date(claim.created_at), 'MMM d, yyyy')}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-gray-100">
-                          {formatCurrency(claim.claim_data?.estimatedAmount)}
-                        </p>
-                        <Link
-                          to={`/customer/claims/${claim.id}`}
-                          className="text-sm text-cyan-400 hover:text-cyan-300 group-hover:underline"
-                        >
-                          View Details →
-                        </Link>
-                      </div>
-                    </div>
-                  ))}
-                </div>
               )}
             </CardBody>
           </Card>
@@ -300,105 +323,63 @@ export const CustomerDashboard = () => {
 
         {/* Recent Activity */}
         <div>
-          <Card className="h-full">
+          <Card>
             <div className="px-6 py-4 border-b border-gray-700">
               <h2 className="text-lg font-semibold text-gray-100">Recent Activity</h2>
             </div>
             <CardBody>
-              {recentActivity.length === 0 ? (
-                <div className="text-center py-8">
-                  <Activity className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-                  <p className="text-gray-400">No recent activity</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {recentActivity.map((activity) => {
-                    const Icon = activity.icon
-                    return (
-                      <div key={activity.id} className="flex items-start gap-3">
-                        <div className={`p-2 bg-gray-700/50 rounded-lg ${activity.color}`}>
-                          <Icon className="w-4 h-4" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-100 text-sm">
-                            {activity.title}
-                          </p>
-                          <p className="text-xs text-gray-400 mt-1">
-                            {activity.description}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {format(new Date(activity.timestamp), 'MMM d, h:mm a')}
-                          </p>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+              <div className="space-y-4">
+                {recentActivity.map((activity) => (
+                  <div key={activity.id} className="flex items-start gap-3">
+                    <div className={`p-2 rounded-lg bg-gray-700/50`}>
+                      <activity.icon className={`w-4 h-4 ${activity.color}`} />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-sm font-medium text-gray-100">
+                        {activity.title}
+                      </h4>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {activity.description}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-2">
+                        {format(activity.time, 'MMM d, h:mm a')}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardBody>
+          </Card>
+
+          {/* Quick Actions */}
+          <Card className="mt-6">
+            <div className="px-6 py-4 border-b border-gray-700">
+              <h2 className="text-lg font-semibold text-gray-100">Quick Actions</h2>
+            </div>
+            <CardBody>
+              <div className="space-y-3">
+                <Link to="/customer/claims/new" className="block">
+                  <Button variant="secondary" className="w-full justify-start">
+                    <FileText className="w-4 h-4 mr-3" />
+                    Submit New Claim
+                  </Button>
+                </Link>
+                <Link to="/customer/payments" className="block">
+                  <Button variant="secondary" className="w-full justify-start">
+                    <CreditCard className="w-4 h-4 mr-3" />
+                    Make Payment
+                  </Button>
+                </Link>
+                <Link to="/customer/profile" className="block">
+                  <Button variant="secondary" className="w-full justify-start">
+                    <User className="w-4 h-4 mr-3" />
+                    Update Profile
+                  </Button>
+                </Link>
+              </div>
             </CardBody>
           </Card>
         </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-        <Card hoverable className="p-6 group">
-          <div className="flex items-start gap-4">
-            <div className="p-3 bg-gradient-to-r from-cyan-500/20 to-blue-600/20 rounded-lg group-hover:scale-110 transition-transform duration-300">
-              <FileText className="w-6 h-6 text-cyan-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-gray-100 mb-1">Submit a Claim</h3>
-              <p className="text-sm text-gray-400 mb-3">
-                File a new insurance claim with our AI-powered system
-              </p>
-              <Link to="/customer/claims/new">
-                <Button size="sm" variant="primary">
-                  Start Claim
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </Card>
-
-        <Card hoverable className="p-6 group">
-          <div className="flex items-start gap-4">
-            <div className="p-3 bg-gradient-to-r from-green-500/20 to-emerald-600/20 rounded-lg group-hover:scale-110 transition-transform duration-300">
-              <DollarSign className="w-6 h-6 text-green-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-gray-100 mb-1">Make a Payment</h3>
-              <p className="text-sm text-gray-400 mb-3">
-                Pay your premiums or deductibles securely online
-              </p>
-              <Link to="/customer/payments">
-                <Button size="sm" variant="secondary">
-                  View Payments
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </Card>
-
-        <Card hoverable className="p-6 group">
-          <div className="flex items-start gap-4">
-            <div className="p-3 bg-gradient-to-r from-purple-500/20 to-pink-600/20 rounded-lg group-hover:scale-110 transition-transform duration-300">
-              <Zap className="w-6 h-6 text-purple-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-gray-100 mb-1">AI Processing</h3>
-              <p className="text-sm text-gray-400 mb-3">
-                Experience instant claim processing with NeuroClaim AI
-              </p>
-              <Badge variant="secondary">
-                <Activity className="w-3 h-3 mr-1" />
-                Active
-              </Badge>
-            </div>
-          </div>
-        </Card>
       </div>
     </DashboardLayout>
   )

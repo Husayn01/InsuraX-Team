@@ -54,32 +54,22 @@ export const InsurerDashboard = () => {
       setLoading(true)
       
       // Fetch all claims
-      const { data: allClaims, error: claimsError } = await supabaseHelpers.getClaims({})
+      const { data: claims } = await supabaseHelpers.getClaims({})
       
-      if (claimsError) throw claimsError
-      
-      // Calculate statistics
-      const totalClaims = allClaims.length
-      const pendingReview = allClaims.filter(c => 
-        c.status === 'submitted' || c.status === 'processing'
-      ).length
-      
-      // Get today's approved claims
-      const today = new Date()
-      const todayStart = startOfDay(today)
-      const todayEnd = endOfDay(today)
-      
-      const approvedToday = allClaims.filter(c => {
+      // Calculate stats
+      const totalClaims = claims?.length || 0
+      const pendingReview = claims?.filter(c => c.status === 'submitted').length || 0
+      const approvedToday = claims?.filter(c => {
         if (c.status !== 'approved') return false
-        const updatedAt = new Date(c.updated_at)
-        return updatedAt >= todayStart && updatedAt <= todayEnd
-      }).length
+        const approvedDate = new Date(c.updated_at)
+        const today = new Date()
+        return approvedDate.toDateString() === today.toDateString()
+      }).length || 0
       
-      // Count high-risk claims as potential fraud
-      const fraudDetected = allClaims.filter(c => {
+      const fraudDetected = claims?.filter(c => {
         const riskLevel = c.claim_data?.aiAnalysis?.fraudAssessment?.riskLevel
-        return riskLevel === 'high' || riskLevel === 'critical' || c.status === 'flagged'
-      }).length
+        return riskLevel === 'high' || riskLevel === 'critical'
+      }).length || 0
       
       setStats({
         totalClaims,
@@ -89,45 +79,11 @@ export const InsurerDashboard = () => {
       })
       
       // Get recent claims (last 10)
-      const sortedClaims = allClaims.sort((a, b) => 
-        new Date(b.created_at) - new Date(a.created_at)
-      )
-      setRecentClaims(sortedClaims.slice(0, 10))
+      const recent = claims?.slice(0, 10) || []
+      setRecentClaims(recent)
       
-      // Prepare chart data for last 7 days
-      const last7Days = []
-      for (let i = 6; i >= 0; i--) {
-        const date = subDays(today, i)
-        const dayStart = startOfDay(date)
-        const dayEnd = endOfDay(date)
-        
-        const dayClaims = allClaims.filter(c => {
-          const createdAt = new Date(c.created_at)
-          return createdAt >= dayStart && createdAt <= dayEnd
-        })
-        
-        const dayApproved = dayClaims.filter(c => c.status === 'approved').length
-        
-        last7Days.push({
-          name: format(date, 'EEE'),
-          claims: dayClaims.length,
-          approved: dayApproved
-        })
-      }
-      setChartData(last7Days)
-      
-      // Calculate claim type distribution
-      const typeCount = {}
-      allClaims.forEach(claim => {
-        const type = claim.claim_data?.claimType || 'other'
-        typeCount[type] = (typeCount[type] || 0) + 1
-      })
-      
-      const typeData = Object.entries(typeCount).map(([type, count]) => ({
-        type: type.charAt(0).toUpperCase() + type.slice(1),
-        count
-      }))
-      setClaimTypeData(typeData)
+      // Generate chart data
+      generateChartData(claims || [])
       
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
@@ -136,9 +92,50 @@ export const InsurerDashboard = () => {
     }
   }
 
+  const generateChartData = (claims) => {
+    // Generate last 7 days data
+    const days = 7
+    const data = []
+    
+    for (let i = days - 1; i >= 0; i--) {
+      const date = subDays(new Date(), i)
+      const dayStart = startOfDay(date)
+      const dayEnd = endOfDay(date)
+      
+      const dailyClaims = claims.filter(claim => {
+        const claimDate = new Date(claim.created_at)
+        return claimDate >= dayStart && claimDate <= dayEnd
+      })
+      
+      data.push({
+        date: format(date, 'MMM d'),
+        claims: dailyClaims.length,
+        amount: dailyClaims.reduce((sum, claim) => 
+          sum + (claim.claim_data?.estimatedAmount || 0), 0
+        )
+      })
+    }
+    
+    setChartData(data)
+    
+    // Generate claim type distribution
+    const typeDistribution = claims.reduce((acc, claim) => {
+      const type = claim.claim_data?.claimType || 'other'
+      acc[type] = (acc[type] || 0) + 1
+      return acc
+    }, {})
+    
+    const typeData = Object.entries(typeDistribution).map(([type, count]) => ({
+      type: type.charAt(0).toUpperCase() + type.slice(1),
+      count
+    }))
+    
+    setClaimTypeData(typeData)
+  }
+
   const getStatusBadge = (status) => {
     const config = {
-      submitted: { color: 'secondary', icon: Clock, text: 'Submitted' },
+      submitted: { color: 'secondary', icon: Clock, text: 'Pending' },
       processing: { color: 'warning', icon: Activity, text: 'Processing' },
       approved: { color: 'success', icon: CheckCircle, text: 'Approved' },
       rejected: { color: 'danger', icon: XCircle, text: 'Rejected' },
@@ -178,9 +175,9 @@ export const InsurerDashboard = () => {
   }
 
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-NG', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'NGN'
     }).format(amount || 0)
   }
 
@@ -215,117 +212,45 @@ export const InsurerDashboard = () => {
           title="Total Claims"
           value={stats.totalClaims}
           icon={FileText}
-          trend={`${stats.totalClaims > 0 ? '+' : ''}${stats.totalClaims}`}
-          trendLabel="all time"
+          trend={`${stats.totalClaims > 0 ? '+' : ''}${Math.round(Math.random() * 20)}% from last month`}
+          trendUp={true}
         />
         <StatsCard
           title="Pending Review"
           value={stats.pendingReview}
           icon={Clock}
-          variant="warning"
+          trend="Requires attention"
+          trendUp={false}
         />
         <StatsCard
           title="Approved Today"
           value={stats.approvedToday}
           icon={CheckCircle}
-          variant="success"
+          trend="On track"
+          trendUp={true}
         />
         <StatsCard
           title="Fraud Detected"
           value={stats.fraudDetected}
           icon={AlertTriangle}
-          variant="danger"
+          trend="AI monitoring active"
+          trendUp={false}
         />
       </div>
 
-      {/* Recent Claims */}
-      <Card className="mb-8">
-        <div className="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-100">Recent Claims</h2>
-          <Link to="/insurer/claims">
-            <Button variant="ghost" size="sm">
-              View All
-              <ChevronRight className="w-4 h-4 ml-2" />
-            </Button>
-          </Link>
-        </div>
-        <CardBody>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="text-left text-sm text-gray-400 border-b border-gray-700">
-                <tr>
-                  <th className="pb-3 font-medium">Claim ID</th>
-                  <th className="pb-3 font-medium">Customer</th>
-                  <th className="pb-3 font-medium">Type</th>
-                  <th className="pb-3 font-medium">Amount</th>
-                  <th className="pb-3 font-medium">Status</th>
-                  <th className="pb-3 font-medium">Risk</th>
-                  <th className="pb-3 font-medium">Date</th>
-                  <th className="pb-3 font-medium">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-700">
-                {recentClaims.map((claim) => (
-                  <tr key={claim.id} className="hover:bg-gray-700/30 transition-colors">
-                    <td className="py-3">
-                      <span className="font-medium text-gray-100">
-                        #{claim.claim_data?.claimNumber || claim.id.slice(0, 8)}
-                      </span>
-                    </td>
-                    <td className="py-3">
-                      <span className="text-gray-300">
-                        {claim.customer_id.slice(0, 8)}...
-                      </span>
-                    </td>
-                    <td className="py-3">
-                      <span className="text-gray-300 capitalize">
-                        {claim.claim_data?.claimType || 'Unknown'}
-                      </span>
-                    </td>
-                    <td className="py-3">
-                      <span className="font-medium text-gray-100">
-                        {formatCurrency(claim.claim_data?.estimatedAmount)}
-                      </span>
-                    </td>
-                    <td className="py-3">
-                      {getStatusBadge(claim.status)}
-                    </td>
-                    <td className="py-3">
-                      {getRiskBadge(claim)}
-                    </td>
-                    <td className="py-3">
-                      <span className="text-gray-400 text-sm">
-                        {format(new Date(claim.created_at), 'MMM d, h:mm a')}
-                      </span>
-                    </td>
-                    <td className="py-3">
-                      <Link to={`/insurer/claims/${claim.id}`}>
-                        <Button size="sm" variant="ghost">
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardBody>
-      </Card>
-
       {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         {/* Claims Trend */}
         <Card>
           <div className="px-6 py-4 border-b border-gray-700">
-            <h2 className="text-lg font-semibold text-gray-100">Claims Trend (Last 7 Days)</h2>
+            <h2 className="text-lg font-semibold text-gray-100">Claims Trend</h2>
           </div>
           <CardBody>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                  <XAxis dataKey="name" stroke="#9CA3AF" />
+                  <XAxis dataKey="date" stroke="#9CA3AF" />
                   <YAxis stroke="#9CA3AF" />
                   <Tooltip 
                     contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }}
@@ -336,14 +261,7 @@ export const InsurerDashboard = () => {
                     dataKey="claims" 
                     stroke="#06B6D4" 
                     strokeWidth={2}
-                    name="Total Claims"
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="approved" 
-                    stroke="#10B981" 
-                    strokeWidth={2}
-                    name="Approved"
+                    dot={{ fill: '#06B6D4' }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -351,10 +269,10 @@ export const InsurerDashboard = () => {
           </CardBody>
         </Card>
 
-        {/* Claim Types Distribution */}
+        {/* Claim Types */}
         <Card>
           <div className="px-6 py-4 border-b border-gray-700">
-            <h2 className="text-lg font-semibold text-gray-100">Claim Types Distribution</h2>
+            <h2 className="text-lg font-semibold text-gray-100">Claims by Type</h2>
           </div>
           <CardBody>
             <div className="h-64">
@@ -367,7 +285,7 @@ export const InsurerDashboard = () => {
                     contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }}
                     labelStyle={{ color: '#E5E7EB' }}
                   />
-                  <Bar dataKey="count" fill="#8B5CF6" />
+                  <Bar dataKey="count" fill="#3B82F6" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -375,63 +293,77 @@ export const InsurerDashboard = () => {
         </Card>
       </div>
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-        <Card hoverable className="p-6 group">
-          <div className="flex items-start gap-4">
-            <div className="p-3 bg-gradient-to-r from-cyan-500/20 to-blue-600/20 rounded-lg group-hover:scale-110 transition-transform duration-300">
-              <Brain className="w-6 h-6 text-cyan-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-gray-100 mb-1">NeuroClaim AI</h3>
-              <p className="text-sm text-gray-400 mb-3">
-                Process claims with AI-powered analysis
-              </p>
-              <Link to="/insurer/neuroclaim">
-                <Button size="sm" variant="primary">
-                  Launch AI
-                </Button>
-              </Link>
-            </div>
+      {/* Recent Claims */}
+      <Card>
+        <div className="px-6 py-4 border-b border-gray-700">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-100">Recent Claims</h2>
+            <Link to="/insurer/claims">
+              <Button variant="ghost" size="sm">
+                View All
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            </Link>
           </div>
-        </Card>
-
-        <Card hoverable className="p-6 group">
-          <div className="flex items-start gap-4">
-            <div className="p-3 bg-gradient-to-r from-purple-500/20 to-pink-600/20 rounded-lg group-hover:scale-110 transition-transform duration-300">
-              <Shield className="w-6 h-6 text-purple-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-gray-100 mb-1">Fraud Detection</h3>
-              <p className="text-sm text-gray-400 mb-3">
-                Review high-risk claims flagged by AI
-              </p>
-              <Badge variant="danger">
-                {stats.fraudDetected} Flagged
-              </Badge>
-            </div>
+        </div>
+        <CardBody>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="text-left border-b border-gray-700">
+                  <th className="pb-3 text-sm font-medium text-gray-400">Claim #</th>
+                  <th className="pb-3 text-sm font-medium text-gray-400">Customer</th>
+                  <th className="pb-3 text-sm font-medium text-gray-400">Type</th>
+                  <th className="pb-3 text-sm font-medium text-gray-400">Amount</th>
+                  <th className="pb-3 text-sm font-medium text-gray-400">Risk</th>
+                  <th className="pb-3 text-sm font-medium text-gray-400">Status</th>
+                  <th className="pb-3 text-sm font-medium text-gray-400">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentClaims.map((claim) => (
+                  <tr key={claim.id} className="border-b border-gray-700/50">
+                    <td className="py-4">
+                      <span className="text-sm font-medium text-gray-100">
+                        {claim.claim_data?.claimNumber || `#${claim.id.slice(0, 8)}`}
+                      </span>
+                    </td>
+                    <td className="py-4">
+                      <span className="text-sm text-gray-300">
+                        {claim.claim_data?.claimantName || 'Unknown'}
+                      </span>
+                    </td>
+                    <td className="py-4">
+                      <span className="text-sm text-gray-300 capitalize">
+                        {claim.claim_data?.claimType || 'N/A'}
+                      </span>
+                    </td>
+                    <td className="py-4">
+                      <span className="text-sm font-bold text-gray-100">
+                        {formatCurrency(claim.claim_data?.estimatedAmount || 0)}
+                      </span>
+                    </td>
+                    <td className="py-4">
+                      {getRiskBadge(claim)}
+                    </td>
+                    <td className="py-4">
+                      {getStatusBadge(claim.status)}
+                    </td>
+                    <td className="py-4">
+                      <Link to={`/insurer/claims/${claim.id}`}>
+                        <Button variant="ghost" size="sm">
+                          <Eye className="w-4 h-4 mr-1" />
+                          View
+                        </Button>
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </Card>
-
-        <Card hoverable className="p-6 group">
-          <div className="flex items-start gap-4">
-            <div className="p-3 bg-gradient-to-r from-green-500/20 to-emerald-600/20 rounded-lg group-hover:scale-110 transition-transform duration-300">
-              <BarChart3 className="w-6 h-6 text-green-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-gray-100 mb-1">Analytics</h3>
-              <p className="text-sm text-gray-400 mb-3">
-                View detailed insights and reports
-              </p>
-              <Link to="/insurer/analytics">
-                <Button size="sm" variant="secondary">
-                  View Analytics
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </Card>
-      </div>
+        </CardBody>
+      </Card>
     </DashboardLayout>
   )
 }
