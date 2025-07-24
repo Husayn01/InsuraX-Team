@@ -2,7 +2,9 @@ import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Shield, Mail, Lock, User, Building, ArrowRight, CheckCircle } from 'lucide-react'
 import { useAuth } from '@contexts/AuthContext'
+import { useNotifications } from '@contexts/NotificationContext'
 import { Button, Input, Select, Alert } from '@shared/components'
+import { NotificationToast } from '@features/notifications/components/NotificationComponents'
 
 export const SignUp = () => {
   const [formData, setFormData] = useState({
@@ -15,6 +17,8 @@ export const SignUp = () => {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [showSuccessToast, setShowSuccessToast] = useState(false)
+  const [successMessage, setSuccessMessage] = useState(null)
   
   const { signUp } = useAuth()
   const navigate = useNavigate()
@@ -58,14 +62,37 @@ export const SignUp = () => {
       // Set loading to false on success
       setLoading(false)
       
+      // Show success notification
+      const notification = {
+        id: Date.now().toString(),
+        title: 'Welcome to InsuraX!',
+        message: `Your account has been created successfully. ${
+          result.data.session 
+            ? 'You are now logged in.' 
+            : 'Please check your email to confirm your account.'
+        }`,
+        type: 'success',
+        color: 'success',
+        icon: 'check-circle',
+        created_at: new Date().toISOString()
+      }
+      
+      setSuccessMessage(notification)
+      setShowSuccessToast(true)
+      
       // If email confirmation is disabled, user will be automatically signed in
       // and redirected by the AuthContext
       
-      // If email confirmation is enabled, show success message
+      // If email confirmation is enabled, redirect after showing notification
       if (!result.data.session) {
-        navigate('/login', { 
-          state: { message: 'Account created successfully! Please check your email to confirm.' } 
-        })
+        setTimeout(() => {
+          navigate('/login', { 
+            state: { 
+              message: 'Account created successfully! Please check your email to confirm your account.',
+              type: 'success'
+            } 
+          })
+        }, 3000)
       }
     } catch (err) {
       console.error('Signup error:', err)
@@ -81,225 +108,172 @@ export const SignUp = () => {
 
   const benefits = formData.role === 'customer' 
     ? [
-        'Submit claims in seconds',
-        'Track claim status in real-time',
-        'Multiple payment options',
-        'Instant claim payouts'
+        'File and track claims online',
+        'Upload documents instantly',
+        'Real-time claim updates',
+        '24/7 customer support'
       ]
     : [
-        'AI-powered claim processing',
+        'Manage claims efficiently',
         'Advanced fraud detection',
-        'Comprehensive analytics',
-        'Streamlined workflows'
+        'Analytics dashboard',
+        'Customer management tools'
       ]
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white relative overflow-hidden">
+      {/* Show success toast */}
+      {showSuccessToast && successMessage && (
+        <NotificationToast 
+          notification={successMessage}
+          onClose={() => setShowSuccessToast(false)}
+        />
+      )}
+
       {/* Animated Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-screen filter blur-xl opacity-20 animate-blob"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-cyan-500 rounded-full mix-blend-screen filter blur-xl opacity-20 animate-blob animation-delay-2000"></div>
-        <div className="absolute top-40 left-1/2 w-80 h-80 bg-pink-500 rounded-full mix-blend-screen filter blur-xl opacity-20 animate-blob animation-delay-4000"></div>
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-cyan-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-2000"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-4000"></div>
       </div>
 
-      {/* Navigation */}
-      <nav className="absolute top-0 w-full z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <Link to="/" className="flex items-center gap-2">
-              <Shield className="w-8 h-8 text-cyan-400" />
-              <span className="text-xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-                InsuraX
-              </span>
+      <div className="relative z-10 flex min-h-screen">
+        {/* Left Panel - Form */}
+        <div className="flex-1 flex items-center justify-center p-8">
+          <div className="w-full max-w-md">
+            <Link to="/" className="inline-flex items-center gap-2 text-gray-400 hover:text-white mb-8 transition-colors">
+              <Shield className="w-5 h-5" />
+              <span className="font-semibold">InsuraX</span>
             </Link>
-            <div className="flex items-center gap-4">
-              <Link to="/">
-                <Button variant="ghost" size="sm" className="text-gray-300 hover:text-white">
-                  Home
-                </Button>
-              </Link>
-              <Link to="/login">
-                <Button size="sm" className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700">
-                  Sign In
-                </Button>
-              </Link>
+
+            <div className="mb-8">
+              <h1 className="text-3xl font-bold mb-2">Create your account</h1>
+              <p className="text-gray-400">Join thousands who trust InsuraX</p>
             </div>
+
+            {error && (
+              <Alert variant="error" className="mb-6">
+                {error}
+              </Alert>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <Select
+                label="Account Type"
+                name="role"
+                value={formData.role}
+                onChange={handleChange}
+                options={roleOptions}
+                icon={Building}
+              />
+
+              {formData.role === 'customer' ? (
+                <Input
+                  label="Full Name"
+                  type="text"
+                  name="fullName"
+                  value={formData.fullName}
+                  onChange={handleChange}
+                  placeholder="John Doe"
+                  icon={User}
+                  required
+                />
+              ) : (
+                <Input
+                  label="Company Name"
+                  type="text"
+                  name="companyName"
+                  value={formData.companyName}
+                  onChange={handleChange}
+                  placeholder="Acme Insurance Co."
+                  icon={Building}
+                  required
+                />
+              )}
+
+              <Input
+                label="Email"
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                placeholder="you@example.com"
+                icon={Mail}
+                required
+              />
+
+              <Input
+                label="Password"
+                type="password"
+                name="password"
+                value={formData.password}
+                onChange={handleChange}
+                placeholder="••••••••"
+                icon={Lock}
+                required
+              />
+
+              <Input
+                label="Confirm Password"
+                type="password"
+                name="confirmPassword"
+                value={formData.confirmPassword}
+                onChange={handleChange}
+                placeholder="••••••••"
+                icon={Lock}
+                required
+              />
+
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                loading={loading}
+                className="w-full group"
+              >
+                <span>Create Account</span>
+                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              </Button>
+            </form>
+
+            <p className="mt-6 text-center text-gray-400">
+              Already have an account?{' '}
+              <Link to="/login" className="text-cyan-400 hover:text-cyan-300 font-medium">
+                Sign in
+              </Link>
+            </p>
           </div>
         </div>
-      </nav>
 
-      {/* Main Content */}
-      <div className="relative min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8 py-20">
-        <div className="max-w-5xl w-full animate-fade-in">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            {/* Left Side - Form */}
-            <div>
-              <div className="text-center lg:text-left mb-8">
-                <h2 className="text-4xl font-bold mb-2">Create your account</h2>
-                <p className="text-gray-400">Join InsuraX and transform your insurance experience</p>
-              </div>
-
-              <div className="bg-gray-800/50 backdrop-blur-xl rounded-2xl border border-gray-700 p-8 shadow-2xl">
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  {error && (
-                    <Alert type="error" title="Registration failed" className="bg-red-900/20 border-red-500/50">
-                      {error}
-                    </Alert>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-2 p-1 bg-gray-700/50 rounded-lg">
-                    {roleOptions.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setFormData(prev => ({ ...prev, role: option.value }))}
-                        className={`py-2 px-4 rounded-md font-medium transition-all duration-300 ${
-                          formData.role === option.value
-                            ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white'
-                            : 'text-gray-400 hover:text-white'
-                        }`}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
+        {/* Right Panel - Benefits */}
+        <div className="hidden lg:flex flex-1 items-center justify-center p-8 bg-gray-800/50 backdrop-blur-xl">
+          <div className="max-w-md">
+            <h2 className="text-2xl font-bold mb-6">
+              {formData.role === 'customer' ? 'Customer Benefits' : 'Insurer Benefits'}
+            </h2>
+            <div className="space-y-4">
+              {benefits.map((benefit, index) => (
+                <div key={index} className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-cyan-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <CheckCircle className="w-4 h-4 text-cyan-400" />
                   </div>
-
-                  <Input
-                    label="Email address"
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    placeholder="you@example.com"
-                    required
-                    className="bg-gray-700/50 border-gray-600 focus:border-cyan-500 text-white placeholder-gray-400"
-                  />
-
-                  {formData.role === 'customer' ? (
-                    <Input
-                      label="Full Name"
-                      type="text"
-                      name="fullName"
-                      value={formData.fullName}
-                      onChange={handleChange}
-                      placeholder="John Doe"
-                      required
-                      className="bg-gray-700/50 border-gray-600 focus:border-cyan-500 text-white placeholder-gray-400"
-                    />
-                  ) : (
-                    <Input
-                      label="Company Name"
-                      type="text"
-                      name="companyName"
-                      value={formData.companyName}
-                      onChange={handleChange}
-                      placeholder="ABC Insurance Ltd."
-                      required
-                      className="bg-gray-700/50 border-gray-600 focus:border-cyan-500 text-white placeholder-gray-400"
-                    />
-                  )}
-
-                  <Input
-                    label="Password"
-                    type="password"
-                    name="password"
-                    value={formData.password}
-                    onChange={handleChange}
-                    placeholder="••••••••"
-                    required
-                    className="bg-gray-700/50 border-gray-600 focus:border-cyan-500 text-white placeholder-gray-400"
-                  />
-
-                  <Input
-                    label="Confirm Password"
-                    type="password"
-                    name="confirmPassword"
-                    value={formData.confirmPassword}
-                    onChange={handleChange}
-                    placeholder="••••••••"
-                    required
-                    className="bg-gray-700/50 border-gray-600 focus:border-cyan-500 text-white placeholder-gray-400"
-                  />
-
-                  <div className="flex items-start">
-                    <input
-                      type="checkbox"
-                      className="mt-1 rounded border-gray-600 bg-gray-700 text-cyan-500 focus:ring-cyan-500"
-                      required
-                    />
-                    <label className="ml-2 text-sm text-gray-400">
-                      I agree to the{' '}
-                      <Link to="/terms" className="text-cyan-400 hover:text-cyan-300">
-                        Terms of Service
-                      </Link>{' '}
-                      and{' '}
-                      <Link to="/privacy" className="text-cyan-400 hover:text-cyan-300">
-                        Privacy Policy
-                      </Link>
-                    </label>
-                  </div>
-
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 transform hover:scale-[1.02] transition-all duration-300"
-                    loading={loading}
-                    disabled={loading}
-                  >
-                    Create Account
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </form>
-
-                <p className="mt-6 text-center text-sm text-gray-400">
-                  Already have an account?{' '}
-                  <Link to="/login" className="font-medium text-cyan-400 hover:text-cyan-300">
-                    Sign in
-                  </Link>
-                </p>
-              </div>
+                  <p className="text-gray-300">{benefit}</p>
+                </div>
+              ))}
             </div>
 
-            {/* Right Side - Benefits */}
-            <div className="hidden lg:block">
-              <div className="bg-gradient-to-br from-cyan-500/10 to-blue-600/10 rounded-2xl border border-cyan-500/20 p-8">
-                <h3 className="text-2xl font-bold mb-6">
-                  {formData.role === 'customer' ? 'Customer Benefits' : 'Insurer Benefits'}
-                </h3>
-                <div className="space-y-4">
-                  {benefits.map((benefit, index) => (
-                    <div key={index} className="flex items-start gap-3">
-                      <div className="flex-shrink-0 w-6 h-6 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-full flex items-center justify-center mt-0.5">
-                        <CheckCircle className="w-4 h-4" />
-                      </div>
-                      <p className="text-gray-300">{benefit}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-8 p-6 bg-gray-800/50 rounded-xl">
-                  <p className="text-sm text-gray-400 mb-2">Trusted by</p>
-                  <p className="text-3xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-                    50,000+ Users
-                  </p>
-                  <p className="text-gray-400 mt-2">Join our growing community</p>
-                </div>
+            <div className="mt-8 p-6 bg-gray-700/50 rounded-xl border border-gray-600">
+              <div className="flex items-center gap-3 mb-3">
+                <Shield className="w-8 h-8 text-cyan-400" />
+                <h3 className="font-semibold">Bank-level Security</h3>
               </div>
+              <p className="text-gray-400 text-sm">
+                Your data is protected with enterprise-grade encryption and security measures.
+              </p>
             </div>
           </div>
         </div>
       </div>
-
-      <style>{`
-        .animation-delay-2000 {
-          animation-delay: 2s;
-        }
-        .animation-delay-4000 {
-          animation-delay: 4s;
-        }
-      `}</style>
     </div>
   )
 }
-
-export default SignUp

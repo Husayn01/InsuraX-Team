@@ -19,62 +19,7 @@ export const AuthProvider = ({ children }) => {
   const [session, setSession] = useState(null)
   const navigate = useNavigate()
 
-  useEffect(() => {
-    // Check for existing session
-    const initAuth = async () => {
-      console.log('🔄 AuthContext: Initializing auth...')
-      try {
-        // Get current session from Supabase
-        const { data: { session } } = await supabase.auth.getSession()
-        
-        if (session) {
-          console.log('✅ Found existing session:', session.user.id)
-          setSession(session)
-          setUser(session.user)
-          await loadProfile(session.user.id)
-        } else {
-          console.log('ℹ️ No existing session found')
-        }
-      } catch (error) {
-        console.error('❌ Auth initialization error:', error)
-      } finally {
-        setLoading(false)
-        console.log('✅ AuthContext: Initial loading complete')
-      }
-    }
-
-    initAuth()
-
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('🔔 Auth state changed:', event, session?.user?.id)
-      
-      if (event === 'SIGNED_IN' && session) {
-        console.log('✅ User signed in')
-        setSession(session)
-        setUser(session.user)
-        await loadProfile(session.user.id)
-      } else if (event === 'SIGNED_OUT') {
-        console.log('👋 User signed out')
-        setSession(null)
-        setUser(null)
-        setProfile(null)
-        navigate('/login')
-      } else if (event === 'TOKEN_REFRESHED' && session) {
-        console.log('🔄 Token refreshed')
-        setSession(session)
-      } else if (event === 'USER_UPDATED' && session) {
-        console.log('👤 User updated')
-        setUser(session.user)
-        await loadProfile(session.user.id)
-      }
-    })
-
-    return () => {
-      subscription.unsubscribe()
-    }
-  }, [navigate])
-
+  // Load profile helper function
   const loadProfile = async (userId) => {
     console.log('📋 Loading profile for user:', userId)
     try {
@@ -82,7 +27,7 @@ export const AuthProvider = ({ children }) => {
       
       if (error && error.code !== 'PGRST116') {
         console.error('❌ Error loading profile:', error)
-        return
+        throw error
       }
       
       if (!data) {
@@ -133,10 +78,103 @@ export const AuthProvider = ({ children }) => {
         setProfile(data)
         console.log('✅ Profile loaded:', data.role)
       }
+      
+      return true // Profile loaded successfully
     } catch (error) {
       console.error('❌ Unexpected error in loadProfile:', error)
+      // Set a minimal profile to prevent app from breaking
+      setProfile({
+        id: userId,
+        role: 'customer',
+        email: user?.email || ''
+      })
+      return false
     }
   }
+
+  useEffect(() => {
+    let mounted = true
+
+    // Check for existing session
+    const initAuth = async () => {
+      console.log('🔄 AuthContext: Initializing auth...')
+      try {
+        // Get current session from Supabase
+        const { data: { session } } = await supabase.auth.getSession()
+        
+        if (!mounted) return
+        
+        if (session) {
+          console.log('✅ Found existing session:', session.user.id)
+          setSession(session)
+          setUser(session.user)
+          
+          // Load profile and wait for it to complete
+          await loadProfile(session.user.id)
+        } else {
+          console.log('ℹ️ No existing session found')
+        }
+      } catch (error) {
+        console.error('❌ Auth initialization error:', error)
+      } finally {
+        if (mounted) {
+          setLoading(false)
+          console.log('✅ AuthContext: Initial loading complete')
+        }
+      }
+    }
+
+    initAuth()
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('🔔 Auth state changed:', event, session?.user?.id)
+      
+      if (!mounted) return
+
+      // Set loading true for state changes that need profile loading
+      if (event === 'SIGNED_IN' && session) {
+        setLoading(true)
+      }
+
+      if (event === 'SIGNED_IN' && session) {
+        console.log('✅ User signed in')
+        setSession(session)
+        setUser(session.user)
+        
+        // Load profile and wait for completion
+        await loadProfile(session.user.id)
+        
+        if (mounted) {
+          setLoading(false)
+        }
+        
+        // Send welcome email for new users (handled by Supabase Auth)
+        if (session.user.email_confirmed_at === null) {
+          console.log('📧 New user detected, welcome email will be sent by Supabase')
+        }
+      } else if (event === 'SIGNED_OUT') {
+        console.log('👋 User signed out')
+        setSession(null)
+        setUser(null)
+        setProfile(null)
+        setLoading(false)
+        navigate('/login')
+      } else if (event === 'TOKEN_REFRESHED' && session) {
+        console.log('🔄 Token refreshed')
+        setSession(session)
+      } else if (event === 'USER_UPDATED' && session) {
+        console.log('👤 User updated')
+        setUser(session.user)
+        await loadProfile(session.user.id)
+      }
+    })
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [navigate])
 
   const signUp = async (email, password, metadata) => {
     console.log('📝 Signing up new user:', email)
@@ -168,6 +206,8 @@ export const AuthProvider = ({ children }) => {
           console.error('❌ Profile creation error:', profileError)
         } else {
           console.log('✅ Profile created successfully')
+          // Create a welcome notification
+          await createWelcomeNotification(data.user.id, metadata.role)
         }
       }
 
@@ -178,33 +218,66 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
+  const createWelcomeNotification = async (userId, role) => {
+    try {
+      const notificationData = {
+        user_id: userId,
+        title: 'Welcome to InsuraX!',
+        message: role === 'customer' 
+          ? 'Your account has been created successfully. Start by filing your first claim or exploring our features.'
+          : 'Your insurer account is ready. Access your dashboard to manage claims and view analytics.',
+        type: 'system',
+        color: 'success',
+        icon: 'check-circle',
+        read: false,
+        created_at: new Date().toISOString()
+      }
+
+      const { error } = await supabase
+        .from('notifications')
+        .insert([notificationData])
+
+      if (error) {
+        console.error('Error creating welcome notification:', error)
+      } else {
+        console.log('✅ Welcome notification created')
+      }
+    } catch (error) {
+      console.error('Error in createWelcomeNotification:', error)
+    }
+  }
+
   const signIn = async (email, password) => {
     console.log('🔐 Signing in user:', email)
+    setLoading(true)
+    
     try {
       const { data, error } = await supabaseHelpers.signIn(email, password)
       
       if (error) {
         console.error('❌ Sign in error:', error)
+        setLoading(false)
         throw error
       }
       
       console.log('✅ Sign in successful, user:', data.user?.id)
       
-      // Immediately set the user to trigger UI updates
+      // Set user and session immediately
       setUser(data.user)
+      setSession(data.session)
       
       // Load profile
       if (data.user) {
         console.log('🔍 Loading profile for navigation...')
         
-        // Load the profile
+        // Load the profile and wait for completion
         await loadProfile(data.user.id)
         
-        // Determine navigation based on email if profile is not ready
-        let targetRoute = '/customer/dashboard'
-        
-        // Try to get profile data
+        // Get profile data for navigation
         const { data: profileData } = await supabaseHelpers.getProfile(data.user.id)
+        
+        // Determine navigation
+        let targetRoute = '/customer/dashboard'
         
         if (profileData?.role) {
           targetRoute = profileData.role === 'insurer' 
@@ -219,12 +292,18 @@ export const AuthProvider = ({ children }) => {
         }
         
         console.log('➡️ Navigating to:', targetRoute)
+        
+        // Set loading false before navigation
+        setLoading(false)
+        
+        // Navigate
         navigate(targetRoute)
       }
       
       return { success: true, data }
     } catch (error) {
       console.error('❌ SignIn error:', error)
+      setLoading(false)
       return { success: false, error: error.message }
     }
   }
