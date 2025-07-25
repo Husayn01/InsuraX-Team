@@ -258,10 +258,9 @@ export const InsurerDashboard = () => {
       <PageHeader
         title={
           <div className="flex items-center gap-3">
-            <span className="text-3xl">🎯</span>
             <div>
               <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
-                Insurer Command Center
+                Dashboard
               </h1>
               <p className="text-gray-400 mt-1">Monitor claims, detect fraud, and manage customer requests in real-time</p>
             </div>
@@ -336,8 +335,7 @@ export const InsurerDashboard = () => {
           }
         ].map((stat, index) => (
           <div key={index} className="relative group">
-            <div className="absolute inset-0 bg-gradient-to-r opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl blur-xl"
-                 className={`bg-gradient-to-r ${stat.gradient}`}></div>
+            <div className="absolute inset-0 bg-gradient-to-r opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl blur-xl"></div>
             <Card className="relative bg-gray-800/50 backdrop-blur-sm border-gray-700/50 hover:border-gray-600 transition-all duration-300 hover:transform hover:scale-105 overflow-hidden">
               <div className={`absolute inset-0 bg-gradient-to-br ${stat.bgPattern} opacity-50`}></div>
               <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-white/5 to-transparent rounded-full -mr-16 -mt-16"></div>

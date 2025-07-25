@@ -14,7 +14,7 @@ import { geminiClient } from '../utils/geminiClient';
 import { ClaimsProcessingSystem} from '../services/claimsOrchestrator';
 import { GEMINI_CONFIG } from '../config/gemini';
 
-export const ClaimsProcessingDemo = () => {
+export const ClaimsProcessing = () => {
   const [documentText, setDocumentText] = useState('');
   const [processing, setProcessing] = useState(false);
   const [currentResult, setCurrentResult] = useState(null);
@@ -1090,7 +1090,7 @@ Contact: +234 805 678 9012`
             <Brain className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
-            NeuroClaim AI Demo
+            NeuroClaim AI
           </h1>
           <p className="text-xl text-gray-400 max-w-3xl mx-auto">
             Experience the power of AI-driven insurance claim processing with advanced fraud detection
@@ -1201,4 +1201,4 @@ Contact: +234 805 678 9012`
   );
 };
 
-export default ClaimsProcessingDemo;
+export default ClaimsProcessing;

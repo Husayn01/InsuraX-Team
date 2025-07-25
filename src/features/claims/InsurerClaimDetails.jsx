@@ -1,36 +1,54 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { 
-  FileText, Download, MessageSquare, Clock, CheckCircle, 
-  XCircle, AlertTriangle, ChevronRight, Calendar, DollarSign,
-  MapPin, User, Paperclip, Eye, ArrowLeft, Send, Plus,
-  Shield, TrendingUp, AlertCircle, Brain, Loader
+  ArrowLeft, FileText, Calendar, MapPin, DollarSign,
+  Clock, User, Mail, Phone, Download, Eye, Paperclip,
+  CheckCircle, XCircle, AlertTriangle, Shield, Brain,
+  Activity, TrendingUp, MessageSquare, Send, Archive,
+  ChevronDown, ChevronUp, Sparkles, Info, FileImage,
+  File, Camera, Hash, Building, Flag, Zap
 } from 'lucide-react'
 import { useAuth } from '@contexts/AuthContext'
 import { supabaseHelpers } from '@services/supabase'
-import { DashboardLayout, PageHeader } from '@shared/layouts'
+import { DashboardLayout, PageHeader, StatsCard } from '@shared/layouts'
 import { 
-  Button, Card, CardBody, Badge, LoadingSpinner, 
-  Modal, Input, Alert, Select
+  Button, Card, CardBody, Alert, Badge, 
+  LoadingSpinner, Modal, Tabs 
 } from '@shared/components'
+import {
+  FormTextArea, FormSelect, FormGroup
+} from '@shared/components/FormComponents'
 import { format } from 'date-fns'
 
 export const InsurerClaimDetails = () => {
   const { id } = useParams()
-  const { user } = useAuth()
   const navigate = useNavigate()
-  const [loading, setLoading] = useState(true)
+  const { user } = useAuth()
+  
   const [claim, setClaim] = useState(null)
   const [customerProfile, setCustomerProfile] = useState(null)
-  const [processing, setProcessing] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [updating, setUpdating] = useState(false)
+  const [error, setError] = useState(null)
+  const [success, setSuccess] = useState(null)
+  const [activeTab, setActiveTab] = useState('overview')
   const [showApprovalModal, setShowApprovalModal] = useState(false)
   const [showRejectionModal, setShowRejectionModal] = useState(false)
-  const [showMessageModal, setShowMessageModal] = useState(false)
-  const [message, setMessage] = useState('')
+  const [comment, setComment] = useState('')
   const [rejectionReason, setRejectionReason] = useState('')
-  const [approvalAmount, setApprovalAmount] = useState('')
-  const [success, setSuccess] = useState('')
-  const [error, setError] = useState('')
+  const [expandedSections, setExpandedSections] = useState({
+    customer: true,
+    documents: true,
+    ai: true,
+    history: true
+  })
+
+  const tabs = [
+    { id: 'overview', label: 'Overview', icon: FileText },
+    { id: 'ai-analysis', label: 'AI Analysis', icon: Brain },
+    { id: 'documents', label: 'Documents', icon: Paperclip },
+    { id: 'activity', label: 'Activity', icon: Activity }
+  ]
 
   useEffect(() => {
     fetchClaimDetails()
@@ -39,240 +57,615 @@ export const InsurerClaimDetails = () => {
   const fetchClaimDetails = async () => {
     try {
       setLoading(true)
+      const { data, error } = await supabaseHelpers.getClaim(id)
       
-      // Fetch claim details
-      const claimData = await supabaseHelpers.getClaim(id)
-      if (!claimData) {
-        setError('Claim not found')
-        return
-      }
-      setClaim(claimData)
-      setApprovalAmount(claimData.claim_data?.estimatedAmount || '')
+      if (error) throw error
+      
+      setClaim(data)
       
       // Fetch customer profile
-      if (claimData.customer_id) {
-        const profile = await supabaseHelpers.getProfile(claimData.customer_id)
-        setCustomerProfile(profile)
+      if (data?.customer_id) {
+        const { data: profileData } = await supabaseHelpers.getProfile(data.customer_id)
+        setCustomerProfile(profileData)
       }
     } catch (error) {
-      console.error('Error fetching claim details:', error)
+      console.error('Error fetching claim:', error)
       setError('Failed to load claim details')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleApprove = async () => {
-    setProcessing(true)
-    setError('')
-    
+  const handleStatusUpdate = async (newStatus) => {
     try {
-      await supabaseHelpers.updateClaim(id, {
-        status: 'approved',
+      setUpdating(true)
+      
+      const updates = {
+        status: newStatus,
         claim_data: {
           ...claim.claim_data,
-          approvedAmount: parseFloat(approvalAmount),
-          approvedBy: user.id,
-          approvedAt: new Date().toISOString()
+          lastReviewedBy: user.id,
+          lastReviewedAt: new Date().toISOString(),
+          reviewComment: comment || rejectionReason
         }
-      })
+      }
+      
+      const { error } = await supabaseHelpers.updateClaim(id, updates)
+      
+      if (error) throw error
       
       // Create notification for customer
       await supabaseHelpers.createClaimNotification(
         claim.customer_id,
         id,
-        'claim_approved',
-        'Claim Approved',
-        `Your claim #${claim.claim_data?.claimNumber} has been approved for ₦${parseFloat(approvalAmount).toLocaleString('en-NG')}.`,
-        { approvedAmount: parseFloat(approvalAmount) }
+        'claim_update',
+        `Claim ${newStatus === 'approved' ? 'Approved' : 'Rejected'}`,
+        `Your claim ${claim.claim_data.claimNumber} has been ${newStatus}.`,
+        { status: newStatus }
       )
       
-      setSuccess('Claim approved successfully')
+      setSuccess(`Claim ${newStatus} successfully`)
       setShowApprovalModal(false)
-      
-      // Refresh claim data
-      fetchClaimDetails()
-      
-    } catch (error) {
-      console.error('Error approving claim:', error)
-      setError('Failed to approve claim')
-    } finally {
-      setProcessing(false)
-    }
-  }
-
-  const handleReject = async () => {
-    if (!rejectionReason.trim()) {
-      setError('Please provide a reason for rejection')
-      return
-    }
-    
-    setProcessing(true)
-    setError('')
-    
-    try {
-      await supabaseHelpers.updateClaim(id, {
-        status: 'rejected',
-        claim_data: {
-          ...claim.claim_data,
-          rejectionReason,
-          rejectedBy: user.id,
-          rejectedAt: new Date().toISOString()
-        }
-      })
-      
-      // Create notification for customer
-      await supabaseHelpers.createClaimNotification(
-        claim.customer_id,
-        id,
-        'claim_rejected',
-        'Claim Rejected',
-        `Your claim #${claim.claim_data?.claimNumber} has been rejected. Reason: ${rejectionReason}`,
-        { rejectionReason }
-      )
-      
-      setSuccess('Claim rejected')
       setShowRejectionModal(false)
+      setComment('')
       setRejectionReason('')
       
       // Refresh claim data
       fetchClaimDetails()
       
+      setTimeout(() => setSuccess(null), 3000)
     } catch (error) {
-      console.error('Error rejecting claim:', error)
-      setError('Failed to reject claim')
+      console.error('Error updating claim:', error)
+      setError('Failed to update claim status')
     } finally {
-      setProcessing(false)
-    }
-  }
-
-  const handleSendMessage = async () => {
-    if (!message.trim()) return
-    
-    setProcessing(true)
-    try {
-      await supabaseHelpers.createClaimNotification(
-        claim.customer_id,
-        id,
-        'message',
-        'New Message from Adjuster',
-        message,
-        { fromAdjuster: true }
-      )
-      
-      setSuccess('Message sent successfully')
-      setMessage('')
-      setShowMessageModal(false)
-      
-      // Refresh claim data
-      fetchClaimDetails()
-      
-    } catch (error) {
-      console.error('Error sending message:', error)
-      setError('Failed to send message')
-    } finally {
-      setProcessing(false)
+      setUpdating(false)
     }
   }
 
   const getStatusIcon = (status) => {
-    switch (status) {
-      case 'submitted':
-        return <Clock className="w-5 h-5" />
-      case 'processing':
-        return <Loader className="w-5 h-5 animate-spin" />
-      case 'approved':
-        return <CheckCircle className="w-5 h-5" />
-      case 'rejected':
-        return <XCircle className="w-5 h-5" />
-      case 'flagged':
-        return <AlertTriangle className="w-5 h-5" />
-      default:
-        return <FileText className="w-5 h-5" />
+    const icons = {
+      submitted: Clock,
+      processing: Activity,
+      approved: CheckCircle,
+      rejected: XCircle
     }
+    return icons[status] || Clock
   }
 
   const getStatusColor = (status) => {
-    switch (status) {
-      case 'submitted':
-        return 'secondary'
-      case 'processing':
-        return 'warning'
-      case 'approved':
-        return 'success'
-      case 'rejected':
-        return 'danger'
-      case 'flagged':
-        return 'danger'
-      default:
-        return 'secondary'
+    const colors = {
+      submitted: 'primary',
+      processing: 'warning',
+      approved: 'success',
+      rejected: 'danger'
     }
+    return colors[status] || 'default'
   }
 
-  const getRiskLevelColor = (level) => {
-    switch (level) {
-      case 'low':
-        return 'text-green-400'
-      case 'medium':
-        return 'text-yellow-400'
-      case 'high':
-        return 'text-orange-400'
-      case 'critical':
-        return 'text-red-400'
-      default:
-        return 'text-gray-400'
+  const getRiskBadge = (riskLevel) => {
+    const config = {
+      low: { color: 'success', icon: Shield },
+      medium: { color: 'warning', icon: AlertTriangle },
+      high: { color: 'danger', icon: AlertTriangle },
+      critical: { color: 'danger', icon: Flag }
     }
+    
+    const { color, icon: Icon } = config[riskLevel] || config.low
+    
+    return (
+      <Badge variant={color} className="flex items-center gap-1">
+        <Icon className="w-3.5 h-3.5" />
+        {riskLevel?.charAt(0).toUpperCase() + riskLevel?.slice(1)} Risk
+      </Badge>
+    )
   }
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency: 'NGN'
-    }).format(amount || 0)
+  const getFileIcon = (url) => {
+    const extension = url.split('.').pop().toLowerCase()
+    if (['jpg', 'jpeg', 'png', 'gif'].includes(extension)) {
+      return <FileImage className="w-5 h-5 text-cyan-400" />
+    } else if (extension === 'pdf') {
+      return <File className="w-5 h-5 text-red-400" />
+    }
+    return <FileText className="w-5 h-5 text-gray-400" />
+  }
+
+  const toggleSection = (section) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }))
   }
 
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="flex items-center justify-center h-64">
-          <LoadingSpinner size="lg" />
+        <div className="flex items-center justify-center h-[60vh]">
+          <div className="text-center">
+            <div className="relative inline-flex">
+              <div className="w-24 h-24 rounded-full border-4 border-gray-700/50"></div>
+              <div className="w-24 h-24 rounded-full border-4 border-cyan-500 border-t-transparent animate-spin absolute inset-0"></div>
+              <div className="w-16 h-16 rounded-full border-4 border-purple-500 border-t-transparent animate-spin absolute inset-2 animation-delay-150"></div>
+              <div className="w-8 h-8 rounded-full border-4 border-pink-500 border-t-transparent animate-spin absolute inset-4 animation-delay-300"></div>
+            </div>
+            <p className="mt-6 text-gray-400 animate-pulse">Loading claim details...</p>
+          </div>
         </div>
       </DashboardLayout>
     )
   }
 
-  if (error && !claim) {
+  if (!claim) {
     return (
       <DashboardLayout>
-        <div className="flex flex-col items-center justify-center h-64">
-          <AlertCircle className="w-12 h-12 text-red-400 mb-4" />
-          <p className="text-lg text-gray-300">{error}</p>
-          <Button variant="secondary" onClick={() => navigate('/insurer/claims')} className="mt-4">
-            Back to Claims
-          </Button>
-        </div>
+        <Alert type="error" title="Claim not found">
+          The requested claim could not be found.
+        </Alert>
       </DashboardLayout>
     )
   }
+
+  const renderOverviewTab = () => (
+    <div className="space-y-6">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <StatsCard
+          title="Claim Amount"
+          value={`₦${claim.claim_data?.estimatedAmount?.toLocaleString() || 0}`}
+          icon={DollarSign}
+          color="emerald"
+          trend={claim.claim_data?.estimatedAmount > 100000 ? 'up' : 'down'}
+        />
+        <StatsCard
+          title="Processing Time"
+          value={`${Math.floor((new Date() - new Date(claim.created_at)) / (1000 * 60 * 60 * 24))} days`}
+          icon={Clock}
+          color="blue"
+        />
+        <StatsCard
+          title="Risk Score"
+          value={`${claim.claim_data?.aiAnalysis?.fraudAssessment?.riskScore || 0}%`}
+          icon={Shield}
+          color={claim.claim_data?.aiAnalysis?.fraudAssessment?.riskLevel === 'high' ? 'red' : 'green'}
+        />
+        <StatsCard
+          title="Confidence"
+          value={`${claim.claim_data?.aiAnalysis?.fraudAssessment?.confidence || 95}%`}
+          icon={TrendingUp}
+          color="purple"
+        />
+      </div>
+
+      {/* Claim Overview */}
+      <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50 hover:shadow-xl transition-all duration-300">
+        <div className="px-6 py-5 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/50 to-gray-800/30">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+              <FileText className="w-5 h-5 text-cyan-400" />
+              Claim Information
+            </h2>
+            {getRiskBadge(claim.claim_data?.aiAnalysis?.fraudAssessment?.riskLevel)}
+          </div>
+        </div>
+        <CardBody>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm text-gray-400 flex items-center gap-1 mb-1">
+                  <Hash className="w-4 h-4" />
+                  Claim Number
+                </p>
+                <p className="font-medium text-gray-100">
+                  {claim.claim_data?.claimNumber || 'N/A'}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-400 flex items-center gap-1 mb-1">
+                  <FileText className="w-4 h-4" />
+                  Claim Type
+                </p>
+                <p className="font-medium text-gray-100 capitalize">
+                  {claim.claim_data?.claimType || 'N/A'}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-400 flex items-center gap-1 mb-1">
+                  <Calendar className="w-4 h-4" />
+                  Incident Date
+                </p>
+                <p className="font-medium text-gray-100">
+                  {claim.claim_data?.incidentDate 
+                    ? format(new Date(claim.claim_data.incidentDate), 'PPP')
+                    : 'N/A'}
+                </p>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm text-gray-400 flex items-center gap-1 mb-1">
+                  <MapPin className="w-4 h-4" />
+                  Location
+                </p>
+                <p className="font-medium text-gray-100">
+                  {claim.claim_data?.incidentLocation || 'N/A'}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-400 flex items-center gap-1 mb-1">
+                  <DollarSign className="w-4 h-4" />
+                  Estimated Amount
+                </p>
+                <p className="font-medium text-gray-100">
+                  ₦{claim.claim_data?.estimatedAmount?.toLocaleString() || 0}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-400 flex items-center gap-1 mb-1">
+                  <Calendar className="w-4 h-4" />
+                  Submitted
+                </p>
+                <p className="font-medium text-gray-100">
+                  {format(new Date(claim.created_at), 'PPP')}
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="mt-6">
+            <p className="text-sm text-gray-400 mb-2">Description</p>
+            <p className="text-gray-300 bg-gray-900/50 p-4 rounded-lg">
+              {claim.claim_data?.damageDescription || 'No description provided'}
+            </p>
+          </div>
+        </CardBody>
+      </Card>
+
+      {/* Customer Information */}
+      <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50 hover:shadow-xl transition-all duration-300">
+        <div 
+          className="px-6 py-5 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/50 to-gray-800/30 cursor-pointer hover:bg-gray-700/30 transition-colors"
+          onClick={() => toggleSection('customer')}
+        >
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+              <User className="w-5 h-5 text-purple-400" />
+              Customer Information
+            </h2>
+            {expandedSections.customer ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+          </div>
+        </div>
+        {expandedSections.customer && (
+          <CardBody className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <p className="text-sm text-gray-400 flex items-center gap-1 mb-1">
+                  <User className="w-4 h-4" />
+                  Name
+                </p>
+                <p className="font-medium text-gray-100">
+                  {customerProfile?.full_name || 'N/A'}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-400 flex items-center gap-1 mb-1">
+                  <Mail className="w-4 h-4" />
+                  Email
+                </p>
+                <p className="font-medium text-gray-100">
+                  {customerProfile?.email || claim.customer_id}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-400 flex items-center gap-1 mb-1">
+                  <Phone className="w-4 h-4" />
+                  Phone
+                </p>
+                <p className="font-medium text-gray-100">
+                  {customerProfile?.phone || 'Not provided'}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-400 flex items-center gap-1 mb-1">
+                  <Calendar className="w-4 h-4" />
+                  Member Since
+                </p>
+                <p className="font-medium text-gray-100">
+                  {customerProfile?.created_at 
+                    ? format(new Date(customerProfile.created_at), 'PPP')
+                    : 'N/A'}
+                </p>
+              </div>
+            </div>
+          </CardBody>
+        )}
+      </Card>
+    </div>
+  )
+
+  const renderAIAnalysisTab = () => (
+    <div className="space-y-6">
+      {claim.claim_data?.aiAnalysis ? (
+        <>
+          {/* Fraud Assessment */}
+          <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50 hover:shadow-xl transition-all duration-300">
+            <div 
+              className="px-6 py-5 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/50 to-gray-800/30 cursor-pointer hover:bg-gray-700/30 transition-colors"
+              onClick={() => toggleSection('fraud')}
+            >
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-red-400" />
+                  Fraud Assessment
+                </h2>
+                <div className="flex items-center gap-3">
+                  {getRiskBadge(claim.claim_data.aiAnalysis.fraudAssessment?.riskLevel)}
+                  {expandedSections.fraud ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                </div>
+              </div>
+            </div>
+            {expandedSections.fraud && (
+              <CardBody>
+                <div className="space-y-4">
+                  {/* Risk Score Visualization */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-gray-400">Risk Score</span>
+                      <span className="text-lg font-semibold text-white">
+                        {claim.claim_data.aiAnalysis.fraudAssessment?.riskScore || 0}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-700 rounded-full h-3">
+                      <div 
+                        className={`h-3 rounded-full transition-all duration-500 ${
+                          claim.claim_data.aiAnalysis.fraudAssessment?.riskScore > 70 
+                            ? 'bg-gradient-to-r from-red-500 to-rose-600' 
+                            : claim.claim_data.aiAnalysis.fraudAssessment?.riskScore > 40 
+                            ? 'bg-gradient-to-r from-amber-500 to-orange-600' 
+                            : 'bg-gradient-to-r from-emerald-500 to-green-600'
+                        }`}
+                        style={{ width: `${claim.claim_data.aiAnalysis.fraudAssessment?.riskScore || 0}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Red Flags */}
+                  {claim.claim_data.aiAnalysis.fraudAssessment?.redFlags?.length > 0 && (
+                    <div>
+                      <h4 className="font-medium text-red-400 mb-3 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4" />
+                        Red Flags Detected
+                      </h4>
+                      <ul className="space-y-2">
+                        {claim.claim_data.aiAnalysis.fraudAssessment.redFlags.map((flag, index) => (
+                          <li key={index} className="flex items-start gap-2">
+                            <span className="w-1.5 h-1.5 bg-red-400 rounded-full mt-1.5 flex-shrink-0"></span>
+                            <span className="text-sm text-gray-300">{flag}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Confidence Score */}
+                  <div className="p-4 bg-gray-900/50 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-400">AI Confidence Level</span>
+                      <div className="flex items-center gap-2">
+                        <Activity className="w-4 h-4 text-cyan-400" />
+                        <span className="font-semibold text-cyan-400">
+                          {claim.claim_data.aiAnalysis.fraudAssessment?.confidence || 95}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardBody>
+            )}
+          </Card>
+
+          {/* Processing Recommendations */}
+          {claim.claim_data.aiAnalysis.categorization?.processingRecommendations && (
+            <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50 hover:shadow-xl transition-all duration-300">
+              <div className="px-6 py-5 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/50 to-gray-800/30">
+                <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-amber-400" />
+                  AI Recommendations
+                </h2>
+              </div>
+              <CardBody>
+                <ul className="space-y-3">
+                  {claim.claim_data.aiAnalysis.categorization.processingRecommendations.map((rec, index) => (
+                    <li key={index} className="flex items-start gap-3">
+                      <div className="p-1 bg-cyan-500/20 rounded">
+                        <Zap className="w-4 h-4 text-cyan-400" />
+                      </div>
+                      <span className="text-gray-300">{rec}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardBody>
+            </Card>
+          )}
+        </>
+      ) : (
+        <Alert type="info" title="No AI Analysis Available">
+          This claim has not been processed by the AI system yet.
+        </Alert>
+      )}
+    </div>
+  )
+
+  const renderDocumentsTab = () => (
+    <div className="space-y-6">
+      {claim.documents && claim.documents.length > 0 ? (
+        <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50 hover:shadow-xl transition-all duration-300">
+          <div className="px-6 py-5 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/50 to-gray-800/30">
+            <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+              <Paperclip className="w-5 h-5 text-cyan-400" />
+              Supporting Documents ({claim.documents.length})
+            </h2>
+          </div>
+          <CardBody>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {claim.documents.map((doc, index) => (
+                <div 
+                  key={index} 
+                  className="flex items-center justify-between p-4 bg-gray-900/50 rounded-lg border border-gray-700 hover:border-gray-600 transition-all duration-300"
+                >
+                  <div className="flex items-center gap-3">
+                    {getFileIcon(doc)}
+                    <div>
+                      <p className="text-sm font-medium text-gray-100">
+                        Document {index + 1}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        Uploaded on submission
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="sm">
+                      <Eye className="w-4 h-4 mr-2" />
+                      View
+                    </Button>
+                    <Button variant="ghost" size="sm">
+                      <Download className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardBody>
+        </Card>
+      ) : (
+        <Alert type="info" title="No Documents">
+          No documents have been uploaded for this claim.
+        </Alert>
+      )}
+    </div>
+  )
+
+  const renderActivityTab = () => (
+    <div className="space-y-6">
+      <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50 hover:shadow-xl transition-all duration-300">
+        <div className="px-6 py-5 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/50 to-gray-800/30">
+          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+            <Activity className="w-5 h-5 text-purple-400" />
+            Claim Activity
+          </h2>
+        </div>
+        <CardBody>
+          <div className="space-y-4">
+            {/* Claim Submitted */}
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-blue-500/20 rounded-lg">
+                <FileText className="w-4 h-4 text-blue-400" />
+              </div>
+              <div>
+                <p className="font-medium text-gray-100">Claim Submitted</p>
+                <p className="text-sm text-gray-400">
+                  {format(new Date(claim.created_at), 'PPP p')}
+                </p>
+              </div>
+            </div>
+
+            {/* AI Processing */}
+            {claim.claim_data?.aiProcessingStatus === 'completed' && (
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-cyan-500/20 rounded-lg">
+                  <Brain className="w-4 h-4 text-cyan-400" />
+                </div>
+                <div>
+                  <p className="font-medium text-gray-100">AI Analysis Completed</p>
+                  <p className="text-sm text-gray-400">
+                    Risk Level: {claim.claim_data.aiAnalysis?.fraudAssessment?.riskLevel}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Current Status */}
+            <div className="flex items-start gap-3">
+              <div className={`p-2 rounded-lg ${
+                claim.status === 'approved' ? 'bg-emerald-500/20' :
+                claim.status === 'rejected' ? 'bg-red-500/20' :
+                'bg-amber-500/20'
+              }`}>
+                {React.createElement(getStatusIcon(claim.status), {
+                  className: `w-4 h-4 ${
+                    claim.status === 'approved' ? 'text-emerald-400' :
+                    claim.status === 'rejected' ? 'text-red-400' :
+                    'text-amber-400'
+                  }`
+                })}
+              </div>
+              <div>
+                <p className="font-medium text-gray-100">
+                  Status: {claim.status.charAt(0).toUpperCase() + claim.status.slice(1)}
+                </p>
+                <p className="text-sm text-gray-400">
+                  {format(new Date(claim.updated_at), 'PPP p')}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Add Comment */}
+          <div className="mt-6 p-4 bg-gray-900/50 rounded-lg">
+            <h4 className="font-medium text-gray-100 mb-3 flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-gray-400" />
+              Add Internal Note
+            </h4>
+            <FormTextArea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Add a note about this claim..."
+              rows={3}
+            />
+            <Button 
+              size="sm" 
+              className="mt-3"
+              disabled={!comment.trim()}
+            >
+              <Send className="w-4 h-4 mr-2" />
+              Add Note
+            </Button>
+          </div>
+        </CardBody>
+      </Card>
+    </div>
+  )
 
   return (
     <DashboardLayout>
+      {/* Animated Background Elements */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -left-40 w-80 h-80 bg-blue-500/20 rounded-full blur-[128px] animate-float"></div>
+        <div className="absolute -bottom-40 -right-40 w-80 h-80 bg-purple-500/20 rounded-full blur-[128px] animate-float animation-delay-2000"></div>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-cyan-500/10 rounded-full blur-[128px] animate-float animation-delay-4000"></div>
+      </div>
+
       <PageHeader
-        title={`Claim #${claim?.claim_data?.claimNumber || id}`}
+        title={
+          <span className="bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+            {claim.claim_data?.claimNumber || 'Claim Details'}
+          </span>
+        }
         description="Review and process insurance claim"
         actions={
           <div className="flex gap-3">
             <Link to="/insurer/claims">
-              <Button variant="ghost">
+              <Button variant="ghost" className="hover:bg-gray-700">
                 <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to Claims
+                Back
               </Button>
             </Link>
-            {claim?.status === 'submitted' && (
+            {claim.status === 'submitted' && (
               <>
                 <Button 
                   variant="danger" 
                   onClick={() => setShowRejectionModal(true)}
+                  className="hover:shadow-red-500/25"
                 >
                   <XCircle className="w-4 h-4 mr-2" />
                   Reject
@@ -280,6 +673,7 @@ export const InsurerClaimDetails = () => {
                 <Button 
                   variant="success" 
                   onClick={() => setShowApprovalModal(true)}
+                  className="bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 shadow-lg hover:shadow-emerald-500/25"
                 >
                   <CheckCircle className="w-4 h-4 mr-2" />
                   Approve
@@ -291,278 +685,32 @@ export const InsurerClaimDetails = () => {
       />
 
       {success && (
-        <Alert type="success" title="Success" className="mb-6">
+        <Alert type="success" title="Success" className="mb-6 bg-emerald-900/20 border-emerald-500/50">
           {success}
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Claim Overview */}
-          <Card>
-            <div className="px-6 py-4 border-b border-gray-700">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-gray-100">Claim Overview</h2>
-                <Badge variant={getStatusColor(claim.status)}>
-                  {getStatusIcon(claim.status)}
-                  <span className="ml-2">{claim.status}</span>
-                </Badge>
-              </div>
-            </div>
-            <CardBody>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-sm text-gray-400">Claim Type</p>
-                    <p className="font-medium text-gray-100 capitalize">
-                      {claim.claim_data?.claimType || 'N/A'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-400">Incident Date</p>
-                    <p className="font-medium text-gray-100 flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-gray-400" />
-                      {claim.claim_data?.incidentDate 
-                        ? format(new Date(claim.claim_data.incidentDate), 'MMM d, yyyy')
-                        : 'N/A'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-400">Date Submitted</p>
-                    <p className="font-medium text-gray-100 flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-gray-400" />
-                      {format(new Date(claim.created_at), 'MMM d, yyyy h:mm a')}
-                    </p>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-sm text-gray-400">Estimated Amount</p>
-                    <p className="font-medium text-gray-100 flex items-center gap-2">
-                      <DollarSign className="w-4 h-4 text-gray-400" />
-                      {formatCurrency(claim.claim_data?.estimatedAmount)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-400">Location</p>
-                    <p className="font-medium text-gray-100 flex items-start gap-2">
-                      <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
-                      {claim.claim_data?.incidentLocation || 'N/A'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-400">Claimant</p>
-                    <p className="font-medium text-gray-100 flex items-center gap-2">
-                      <User className="w-4 h-4 text-gray-400" />
-                      {claim.claim_data?.claimantName || 'N/A'}
-                    </p>
-                  </div>
-                </div>
-              </div>
+      {error && (
+        <Alert type="error" title="Error" className="mb-6 bg-red-900/20 border-red-500/50">
+          {error}
+        </Alert>
+      )}
 
-              {/* Description */}
-              <div className="mt-6 pt-6 border-t border-gray-700">
-                <h3 className="font-medium text-gray-100 mb-3">Damage Description</h3>
-                <p className="text-gray-300 leading-relaxed">
-                  {claim.claim_data?.damageDescription || 'No description provided'}
-                </p>
-              </div>
+      {/* Tab Navigation */}
+      <div className="mb-6">
+        <Tabs 
+          tabs={tabs} 
+          activeTab={activeTab} 
+          onChange={setActiveTab} 
+        />
+      </div>
 
-              {/* Vehicle Info if applicable */}
-              {claim.claim_data?.vehicleInfo && (
-                <div className="mt-6 pt-6 border-t border-gray-700">
-                  <h3 className="font-medium text-gray-100 mb-3">Vehicle Information</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    <div>
-                      <p className="text-gray-400">Make</p>
-                      <p className="font-medium text-gray-100">
-                        {claim.claim_data.vehicleInfo.make || 'N/A'}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400">Model</p>
-                      <p className="font-medium text-gray-100">
-                        {claim.claim_data.vehicleInfo.model || 'N/A'}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400">Year</p>
-                      <p className="font-medium text-gray-100">
-                        {claim.claim_data.vehicleInfo.year || 'N/A'}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400">License Plate</p>
-                      <p className="font-medium text-gray-100">
-                        {claim.claim_data.vehicleInfo.licensePlate || 'N/A'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </CardBody>
-          </Card>
-
-          {/* AI Analysis */}
-          {claim.claim_data?.aiAnalysis && (
-            <Card>
-              <div className="px-6 py-4 border-b border-gray-700">
-                <div className="flex items-center gap-2">
-                  <Brain className="w-5 h-5 text-cyan-400" />
-                  <h2 className="text-lg font-semibold text-gray-100">AI Analysis</h2>
-                </div>
-              </div>
-              <CardBody>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                  <div className="bg-gray-700/30 rounded-lg p-4">
-                    <p className="text-sm text-gray-400 mb-1">Risk Level</p>
-                    <p className={`font-bold text-lg ${getRiskLevelColor(
-                      claim.claim_data.aiAnalysis.fraudAssessment?.riskLevel
-                    )}`}>
-                      {claim.claim_data.aiAnalysis.fraudAssessment?.riskLevel || 'N/A'}
-                    </p>
-                  </div>
-                  <div className="bg-gray-700/30 rounded-lg p-4">
-                    <p className="text-sm text-gray-400 mb-1">Fraud Score</p>
-                    <p className="font-bold text-lg text-gray-100">
-                      {(claim.claim_data.aiAnalysis.fraudAssessment?.fraudScore * 100 || 0).toFixed(0)}%
-                    </p>
-                  </div>
-                  <div className="bg-gray-700/30 rounded-lg p-4">
-                    <p className="text-sm text-gray-400 mb-1">Confidence</p>
-                    <p className="font-bold text-lg text-gray-100">
-                      {claim.claim_data.aiAnalysis.extractedData?.confidence || 'N/A'}
-                    </p>
-                  </div>
-                </div>
-
-                {claim.claim_data.aiAnalysis.fraudAssessment?.redFlags && (
-                  <div>
-                    <h4 className="font-medium text-red-400 mb-2">Red Flags</h4>
-                    <ul className="space-y-2">
-                      {claim.claim_data.aiAnalysis.fraudAssessment.redFlags.map((flag, index) => (
-                        <li key={index} className="flex items-start gap-2">
-                          <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5" />
-                          <span className="text-sm text-gray-300">{flag}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {claim.claim_data.aiAnalysis.categorization?.processingRecommendations && (
-                  <div className="mt-4">
-                    <h4 className="font-medium text-cyan-400 mb-2">Recommendations</h4>
-                    <ul className="space-y-2">
-                      {claim.claim_data.aiAnalysis.categorization.processingRecommendations.map((rec, index) => (
-                        <li key={index} className="flex items-start gap-2">
-                          <CheckCircle className="w-4 h-4 text-green-400 mt-0.5" />
-                          <span className="text-sm text-gray-300">{rec}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </CardBody>
-            </Card>
-          )}
-
-          {/* Documents */}
-          {claim.documents && claim.documents.length > 0 && (
-            <Card>
-              <div className="px-6 py-4 border-b border-gray-700">
-                <h2 className="text-lg font-semibold text-gray-100">Supporting Documents</h2>
-              </div>
-              <CardBody>
-                <div className="space-y-3">
-                  {claim.documents.map((doc, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-gray-700/30 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <Paperclip className="w-5 h-5 text-gray-400" />
-                        <div>
-                          <p className="text-sm font-medium text-gray-100">Document {index + 1}</p>
-                          <p className="text-xs text-gray-400">Uploaded on submission</p>
-                        </div>
-                      </div>
-                      <Button variant="ghost" size="sm">
-                        <Eye className="w-4 h-4 mr-2" />
-                        View
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </CardBody>
-            </Card>
-          )}
-        </div>
-
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Customer Info */}
-          <Card>
-            <div className="px-6 py-4 border-b border-gray-700">
-              <h2 className="text-lg font-semibold text-gray-100">Customer Information</h2>
-            </div>
-            <CardBody className="space-y-4">
-              <div>
-                <p className="text-sm text-gray-400 mb-1">Name</p>
-                <p className="font-medium text-gray-100">
-                  {customerProfile?.full_name || 'N/A'}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-400 mb-1">Email</p>
-                <p className="font-medium text-gray-100">
-                  {customerProfile?.email || claim.customer_id}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-400 mb-1">Phone</p>
-                <p className="font-medium text-gray-100">
-                  {customerProfile?.phone || 'Not provided'}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-400 mb-1">Member Since</p>
-                <p className="font-medium text-gray-100">
-                  {customerProfile?.created_at 
-                    ? format(new Date(customerProfile.created_at), 'MMM yyyy')
-                    : 'N/A'}
-                </p>
-              </div>
-              <Button 
-                variant="secondary" 
-                className="w-full"
-                onClick={() => setShowMessageModal(true)}
-              >
-                <MessageSquare className="w-4 h-4 mr-2" />
-                Send Message
-              </Button>
-            </CardBody>
-          </Card>
-
-          {/* Actions */}
-          <Card>
-            <div className="px-6 py-4 border-b border-gray-700">
-              <h2 className="text-lg font-semibold text-gray-100">Quick Actions</h2>
-            </div>
-            <CardBody className="space-y-3">
-              <Button variant="secondary" className="w-full">
-                <FileText className="w-4 h-4 mr-2" />
-                Request Additional Docs
-              </Button>
-              <Button variant="secondary" className="w-full">
-                <Shield className="w-4 h-4 mr-2" />
-                Flag for Investigation
-              </Button>
-              <Button variant="secondary" className="w-full">
-                <TrendingUp className="w-4 h-4 mr-2" />
-                View Claim History
-              </Button>
-            </CardBody>
-          </Card>
-        </div>
+      {/* Tab Content */}
+      <div className="relative z-10">
+        {activeTab === 'overview' && renderOverviewTab()}
+        {activeTab === 'ai-analysis' && renderAIAnalysisTab()}
+        {activeTab === 'documents' && renderDocumentsTab()}
+        {activeTab === 'activity' && renderActivityTab()}
       </div>
 
       {/* Approval Modal */}
@@ -573,46 +721,40 @@ export const InsurerClaimDetails = () => {
         size="md"
       >
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Approval Amount
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">₦</span>
-              <input
-                type="number"
-                value={approvalAmount}
-                onChange={(e) => setApprovalAmount(e.target.value)}
-                className="w-full pl-8 pr-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-white"
-                placeholder="Enter approved amount"
-              />
-            </div>
-            <p className="text-xs text-gray-400 mt-1">
-              Original requested amount: {formatCurrency(claim?.claim_data?.estimatedAmount)}
-            </p>
-          </div>
-
-          {error && (
-            <Alert type="error" title="Error">
-              {error}
-            </Alert>
-          )}
-
-          <div className="flex justify-end gap-3 pt-4">
-            <Button
-              variant="ghost"
+          <p className="text-gray-300">
+            Are you sure you want to approve this claim for ₦{claim.claim_data?.estimatedAmount?.toLocaleString()}?
+          </p>
+          <FormTextArea
+            label="Add a comment (optional)"
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="Any additional notes..."
+            rows={3}
+          />
+          <div className="flex gap-3 justify-end">
+            <Button 
+              variant="secondary" 
               onClick={() => setShowApprovalModal(false)}
-              disabled={processing}
             >
               Cancel
             </Button>
             <Button
               variant="success"
-              onClick={handleApprove}
-              loading={processing}
+              onClick={() => handleStatusUpdate('approved')}
+              disabled={updating}
+              className="bg-gradient-to-r from-emerald-500 to-green-600"
             >
-              <CheckCircle className="w-4 h-4 mr-2" />
-              Approve Claim
+              {updating ? (
+                <>
+                  <LoadingSpinner size="sm" className="mr-2" />
+                  Approving...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Confirm Approval
+                </>
+              )}
             </Button>
           </div>
         </div>
@@ -626,91 +768,87 @@ export const InsurerClaimDetails = () => {
         size="md"
       >
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Rejection Reason
-            </label>
-            <textarea
-              value={rejectionReason}
-              onChange={(e) => setRejectionReason(e.target.value)}
-              rows={4}
-              className="w-full px-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-white resize-none"
-              placeholder="Explain why this claim is being rejected..."
-            />
-          </div>
-
-          {error && (
-            <Alert type="error" title="Error">
-              {error}
-            </Alert>
-          )}
-
-          <div className="flex justify-end gap-3 pt-4">
-            <Button
-              variant="ghost"
+          <p className="text-gray-300">
+            Please provide a reason for rejecting this claim.
+          </p>
+          <FormSelect
+            label="Rejection Reason"
+            value={rejectionReason}
+            onChange={(e) => setRejectionReason(e.target.value)}
+            options={[
+              { value: '', label: 'Select a reason' },
+              { value: 'incomplete_documentation', label: 'Incomplete Documentation' },
+              { value: 'policy_exclusion', label: 'Policy Exclusion' },
+              { value: 'fraud_suspected', label: 'Fraud Suspected' },
+              { value: 'coverage_expired', label: 'Coverage Expired' },
+              { value: 'other', label: 'Other' }
+            ]}
+            required
+          />
+          <FormTextArea
+            label="Additional Comments"
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="Provide more details..."
+            rows={3}
+            required
+          />
+          <div className="flex gap-3 justify-end">
+            <Button 
+              variant="secondary" 
               onClick={() => setShowRejectionModal(false)}
-              disabled={processing}
             >
               Cancel
             </Button>
             <Button
               variant="danger"
-              onClick={handleReject}
-              loading={processing}
+              onClick={() => handleStatusUpdate('rejected')}
+              disabled={updating || !rejectionReason || !comment}
             >
-              <XCircle className="w-4 h-4 mr-2" />
-              Reject Claim
+              {updating ? (
+                <>
+                  <LoadingSpinner size="sm" className="mr-2" />
+                  Rejecting...
+                </>
+              ) : (
+                <>
+                  <XCircle className="w-4 h-4 mr-2" />
+                  Confirm Rejection
+                </>
+              )}
             </Button>
           </div>
         </div>
       </Modal>
 
-      {/* Message Modal */}
-      <Modal
-        isOpen={showMessageModal}
-        onClose={() => setShowMessageModal(false)}
-        title="Send Message to Customer"
-        size="md"
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Message
-            </label>
-            <textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              rows={4}
-              className="w-full px-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-white resize-none"
-              placeholder="Type your message here..."
-            />
-          </div>
-
-          {error && (
-            <Alert type="error" title="Error">
-              {error}
-            </Alert>
-          )}
-
-          <div className="flex justify-end gap-3 pt-4">
-            <Button
-              variant="ghost"
-              onClick={() => setShowMessageModal(false)}
-              disabled={processing}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={handleSendMessage}
-              loading={processing}
-            >
-              <Send className="w-4 h-4 mr-2" />
-              Send Message
-            </Button>
-          </div>
-        </div>
-      </Modal>
+      <style jsx>{`
+        @keyframes float {
+          0% {
+            transform: translateY(0px);
+          }
+          50% {
+            transform: translateY(-20px);
+          }
+          100% {
+            transform: translateY(0px);
+          }
+        }
+        .animate-float {
+          animation: float 6s ease-in-out infinite;
+        }
+        .animation-delay-150 {
+          animation-delay: 0.15s;
+        }
+        .animation-delay-300 {
+          animation-delay: 0.3s;
+        }
+        .animation-delay-2000 {
+          animation-delay: 2s;
+        }
+        .animation-delay-4000 {
+          animation-delay: 4s;
+        }
+      `}</style>
     </DashboardLayout>
   )
 }
