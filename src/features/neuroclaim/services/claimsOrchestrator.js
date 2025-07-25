@@ -40,7 +40,7 @@ export class ClaimsProcessingSystem {
       const extractionResult = await this.documentProcessor.extractClaimInformation(documentText);
       
       if (!extractionResult.success) {
-        throw new Error(`Document extraction failed: ${extractionResult.error}`);
+        throw new Error(extractionResult.error || 'Document extraction failed');
       }
 
       const claimData = extractionResult.data;
@@ -50,7 +50,7 @@ export class ClaimsProcessingSystem {
       const validationResult = await this.documentProcessor.validateClaimInformation(claimData);
       
       if (!validationResult.success) {
-        throw new Error(`Validation failed: ${validationResult.error}`);
+        throw new Error(validationResult.error || 'Validation failed');
       }
 
       // Step 3: Assess fraud risk
@@ -61,7 +61,7 @@ export class ClaimsProcessingSystem {
       );
       
       if (!fraudAssessment.success) {
-        throw new Error(`Fraud assessment failed: ${fraudAssessment.error}`);
+        throw new Error(fraudAssessment.error || 'Fraud assessment failed');
       }
 
       // Step 4: Categorize and prioritize
@@ -72,7 +72,7 @@ export class ClaimsProcessingSystem {
       );
       
       if (!categorizationResult.success) {
-        throw new Error(`Categorization failed: ${categorizationResult.error}`);
+        throw new Error(categorizationResult.error || 'Categorization failed');
       }
 
       // Step 5: Generate summary and recommendations
@@ -84,7 +84,7 @@ export class ClaimsProcessingSystem {
       );
 
       if (!summaryResult.success) {
-        throw new Error(`Summary generation failed: ${summaryResult.error}`);
+        throw new Error(summaryResult.error || 'Summary generation failed');
       }
 
       // Step 6: Generate customer response if requested
@@ -386,6 +386,35 @@ Image Details:
   clearAllClaims() {
     this.processedClaims.clear();
     this.chatInterface.clearHistory();
+  }
+
+  /**
+   * Test JSON generation (for debugging)
+   */
+  async testJSONGeneration() {
+    console.log('Testing JSON generation...');
+    
+    try {
+      // Test 1: Simple JSON
+      const test1 = await geminiClient.chatCompletion([
+        { role: 'user', content: 'Return exactly this JSON: {"test": "simple", "value": 123}' }
+      ]);
+      console.log('Test 1 - Simple JSON:', test1.choices[0].message.content);
+      
+      // Test 2: Complex JSON with the document processor
+      const test2Result = await this.documentProcessor.extractClaimInformation(
+        'Test claim. Claim number: TEST-123. Claimant: John Doe. Amount: $5000.'
+      );
+      console.log('Test 2 - Document extraction:', test2Result);
+      
+      return {
+        test1: test1.choices[0].message.content,
+        test2: test2Result
+      };
+    } catch (error) {
+      console.error('JSON generation test failed:', error);
+      return { error: error.message };
+    }
   }
 }
 

@@ -4,7 +4,10 @@ import {
   AlertCircle, TrendingUp, Clock, DollarSign,
   Shield, Activity, BarChart3, X, Loader2,
   File, Image, FileCheck, AlertTriangle,
-  ChevronDown, ChevronUp, Download, RefreshCw
+  ChevronDown, ChevronUp, Download, RefreshCw,
+  Sparkles, Database, Code, ArrowRight,
+  Info, FileImage, FileType, Bot, Car, Heart, Home,
+  Hash, User, Tag, Calendar, MapPin
 } from 'lucide-react';
 import { Alert, Button, Badge, Card, CardBody, LoadingSpinner } from '@shared/components';
 import { geminiClient } from '../utils/geminiClient';
@@ -25,9 +28,16 @@ export const ClaimsProcessingDemo = () => {
   const [analytics, setAnalytics] = useState(null);
   const [selectedClaim, setSelectedClaim] = useState(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [expandedSections, setExpandedSections] = useState({
+    extraction: true,
+    fraud: true,
+    validation: true,
+    categorization: true,
+    summary: true
+  });
 
   // Initialize the enhanced orchestrator
- const enhancedSystem = new ClaimsProcessingSystem();
+  const enhancedSystem = new ClaimsProcessingSystem();
 
   useEffect(() => {
     const checkApiKey = async () => {
@@ -70,6 +80,8 @@ export const ClaimsProcessingDemo = () => {
   const sampleDocuments = [
     {
       title: "Auto Accident Claim - Rear-end Collision",
+      icon: <Car className="w-5 h-5" />,
+      type: 'auto',
       content: `CLAIM FORM - AUTO ACCIDENT
       
 Claim Number: CLM-2024-001234
@@ -107,6 +119,8 @@ Went to Lagos University Teaching Hospital for neck pain. X-rays negative. Presc
     },
     {
       title: "Health Insurance Claim - Surgery",
+      icon: <Heart className="w-5 h-5" />,
+      type: 'health',
       content: `HEALTH INSURANCE CLAIM FORM
 
 Claim Number: HC-2024-005678
@@ -143,6 +157,8 @@ Auth Number: AUTH-2024-9876`
     },
     {
       title: "Property Claim - Water Damage",
+      icon: <Home className="w-5 h-5" />,
+      type: 'property',
       content: `PROPERTY DAMAGE CLAIM
 
 Claim Number: PROP-2024-009876
@@ -180,55 +196,55 @@ Contact: +234 805 678 9012`
     }
   ];
 
-const processDocument = async () => {
-  if (!documentText.trim() && uploadedFiles.length === 0) {
-    setErrorMessage('Please enter claim text or upload a document');
-    setTimeout(() => setErrorMessage(''), 3000);
-    return;
-  }
-
-  if (apiKeyStatus !== 'configured') {
-    setErrorMessage('This is a demo version. To use AI processing, please configure your Gemini API key.');
-    setTimeout(() => setErrorMessage(''), 5000);
-    return;
-  }
-
-  setProcessing(true);
-  setCurrentResult(null);
-  setErrorMessage('');
-
-  try {
-    let textToProcess = documentText;
-
-    // If files are uploaded, extract text from them
-    if (uploadedFiles.length > 0) {
-      const extractedTexts = await Promise.all(
-        uploadedFiles.map(file => enhancedSystem.extractTextFromFile(file))
-      );
-      textToProcess = extractedTexts.join('\n\n---\n\n') + '\n\n' + documentText;
+  const processDocument = async () => {
+    if (!documentText.trim() && uploadedFiles.length === 0) {
+      setErrorMessage('Please enter claim text or upload a document');
+      setTimeout(() => setErrorMessage(''), 5000);
+      return;
     }
 
-    const result = await enhancedSystem.processClaimComplete(textToProcess, {
-      generateCustomerResponse: true,
-      customerFriendly: true
-    });
-
-    if (result.success) {
-      setCurrentResult(result.result);
-      const claims = enhancedSystem.getAllClaims();
-      setAllClaims(claims);
-      updateAnalytics();
-    } else {
-      throw new Error(result.error || 'Processing failed');
+    if (apiKeyStatus !== 'configured') {
+      setErrorMessage('This is a demo version. To use AI processing, please configure your Gemini API key.');
+      setTimeout(() => setErrorMessage(''), 5000);
+      return;
     }
-  } catch (error) {
-    console.error('Processing error:', error);
-    setErrorMessage(`Processing failed: ${error.message}`);
+
+    setProcessing(true);
     setCurrentResult(null);
-  } finally {
-    setProcessing(false);
-  }
-};
+    setErrorMessage('');
+
+    try {
+      let textToProcess = documentText;
+
+      // If files are uploaded, extract text from them
+      if (uploadedFiles.length > 0) {
+        const extractedTexts = await Promise.all(
+          uploadedFiles.map(file => enhancedSystem.extractTextFromFile(file))
+        );
+        textToProcess = extractedTexts.join('\n\n---\n\n') + '\n\n' + documentText;
+      }
+
+      const result = await enhancedSystem.processClaimComplete(textToProcess, {
+        generateCustomerResponse: true,
+        customerFriendly: true
+      });
+
+      if (result.status === 'completed') {
+        setCurrentResult(result);
+        const claims = enhancedSystem.getAllClaims();
+        setAllClaims(claims);
+        updateAnalytics();
+      } else {
+        throw new Error(result.error || 'Processing failed');
+      }
+    } catch (error) {
+      console.error('Processing error:', error);
+      setErrorMessage(`Processing failed: ${error.message}`);
+      setCurrentResult(null);
+    } finally {
+      setProcessing(false);
+    }
+  };
 
   const updateAnalytics = () => {
     const analytics = enhancedSystem.generateAnalytics();
@@ -268,14 +284,23 @@ const processDocument = async () => {
     });
 
     if (validFiles.length !== fileArray.length) {
-      alert('Some files were not supported. Supported formats: ' + enhancedSystem.supportedFileTypes.join(', '));
+      alert('Some files were not supported. Supported types: ' + enhancedSystem.supportedFileTypes.join(', '));
     }
 
     setUploadedFiles(prev => [...prev, ...validFiles]);
   };
 
-  const removeFile = (index) => {
-    setUploadedFiles(prev => prev.filter((_, i) => i !== index));
+  const getFileIcon = (file) => {
+    const extension = file.name.split('.').pop().toLowerCase();
+    if (['jpg', 'jpeg', 'png', 'gif', 'bmp'].includes(extension)) {
+      return <FileImage className="w-5 h-5 text-cyan-400" />;
+    } else if (extension === 'pdf') {
+      return <FileType className="w-5 h-5 text-red-400" />;
+    } else if (['doc', 'docx'].includes(extension)) {
+      return <FileText className="w-5 h-5 text-blue-400" />;
+    } else {
+      return <File className="w-5 h-5 text-gray-400" />;
+    }
   };
 
   const formatCurrency = (amount) => {
@@ -285,395 +310,555 @@ const processDocument = async () => {
     }).format(amount || 0);
   };
 
-  // Render different tab content
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'process':
-        return renderProcessTab();
-      case 'claims':
-        return renderClaimsTab();
-      case 'analytics':
-        return renderAnalyticsTab();
-      default:
-        return null;
-    }
+  const toggleSection = (section) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
   };
 
   const renderProcessTab = () => (
     <div className="space-y-8">
-      {/* Error Alert */}
-      {errorMessage && apiKeyStatus !== 'missing' && (
-        <div className={`border rounded-lg p-4 ${
-          apiKeyStatus === 'missing' ? 'bg-blue-900/20 border-blue-500/50' : 'bg-red-900/20 border-red-500/50'
-        }`}>
-          <div className="flex items-center gap-2">
-            <AlertCircle className={`w-5 h-5 ${
-              apiKeyStatus === 'missing' ? 'text-blue-400' : 'text-red-400'
-            }`} />
-            <h3 className={`font-semibold ${
-              apiKeyStatus === 'missing' ? 'text-blue-400' : 'text-red-400'
-            }`}>
-              {apiKeyStatus === 'missing' ? 'Demo Mode' : 'Error'}
-            </h3>
+      {/* API Status Banner */}
+      {apiKeyStatus !== 'configured' && (
+        <Alert 
+          type="warning" 
+          title="Demo Mode Active"
+          className="bg-amber-900/20 border-amber-500/50 backdrop-blur-sm"
+        >
+          <div className="flex items-start gap-3">
+            <Info className="w-5 h-5 text-amber-400 mt-0.5" />
+            <div>
+              <p className="text-amber-200">
+                {apiKeyStatus === 'missing' 
+                  ? 'Gemini API key not configured. You can explore the interface, but AI processing requires an API key.'
+                  : 'API connection error. Please check your configuration.'}
+              </p>
+              <p className="text-sm text-amber-300/70 mt-1">
+                Set VITE_GEMINI_API_KEY in your environment variables to enable full functionality.
+              </p>
+            </div>
           </div>
-          <p className={`mt-2 text-sm ${
-            apiKeyStatus === 'missing' ? 'text-blue-300' : 'text-red-300'
-          }`}>
-            {errorMessage}
-          </p>
-        </div>
+        </Alert>
       )}
 
-      {/* API Status Section */}
-      <div className={`border rounded-lg p-4 ${
-        apiKeyStatus === 'configured' ? 'bg-green-900/20 border-green-500/50' :
-        apiKeyStatus === 'missing' ? 'bg-blue-900/20 border-blue-500/50' :
-        apiKeyStatus === 'error' ? 'bg-red-900/20 border-red-500/50' :
-        'bg-yellow-900/20 border-yellow-500/50'
-      }`}>
-        <div className="flex items-center gap-2">
-          {apiKeyStatus === 'configured' && <CheckCircle className="w-5 h-5 text-green-400" />}
-          {apiKeyStatus === 'missing' && <AlertCircle className="w-5 h-5 text-blue-400" />}
-          {apiKeyStatus === 'error' && <AlertCircle className="w-5 h-5 text-red-400" />}
-          {apiKeyStatus === 'checking' && <Clock className="w-5 h-5 text-yellow-400 animate-spin" />}
-          
-          <h3 className={`font-semibold ${
-            apiKeyStatus === 'configured' ? 'text-green-400' :
-            apiKeyStatus === 'missing' ? 'text-blue-400' :
-            apiKeyStatus === 'error' ? 'text-red-400' :
-            'text-yellow-400'
-          }`}>
-            {apiKeyStatus === 'configured' ? 'AI System Ready' :
-             apiKeyStatus === 'missing' ? 'Demo Mode - AI Processing Unavailable' :
-             apiKeyStatus === 'error' ? 'AI Connection Error' :
-             isTestingConnection ? 'Testing AI Connection...' : 'Checking AI Status...'}
-          </h3>
-        </div>
-        
-        {apiKeyStatus === 'configured' && (
-          <p className="mt-2 text-sm text-gray-400">
-            NeuroClaim AI is ready to process insurance claims with advanced fraud detection.
-          </p>
-        )}
-      </div>
+      {/* Error Message */}
+      {errorMessage && (
+        <Alert 
+          type="error" 
+          title="Error"
+          className="bg-red-900/20 border-red-500/50 backdrop-blur-sm animate-shake"
+        >
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-red-400" />
+            <span>{errorMessage}</span>
+          </div>
+        </Alert>
+      )}
 
       {/* Sample Documents */}
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold text-gray-100">Try Sample Claims</h3>
+      <div>
+        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <FileText className="w-5 h-5 text-cyan-400" />
+          Sample Documents
+        </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {sampleDocuments.map((sample, index) => (
-            <button
-              key={index}
-              onClick={() => loadSampleDocument(sample)}
-              className="p-4 bg-gray-800/50 hover:bg-gray-700/50 border border-gray-700 hover:border-cyan-500/50 rounded-lg text-left transition-all duration-200 group"
-            >
-              <FileText className="w-6 h-6 text-cyan-400 mb-2" />
-              <h4 className="font-medium text-gray-100 group-hover:text-cyan-400 transition-colors">
-                {sample.title}
-              </h4>
-              <p className="text-sm text-gray-400 mt-1">
-                Click to load this sample claim
-              </p>
-            </button>
-          ))}
+          {sampleDocuments.map((sample, index) => {
+            const colors = ['cyan', 'purple', 'emerald'];
+            const color = colors[index % colors.length];
+            
+            return (
+              <button
+                key={index}
+                onClick={() => loadSampleDocument(sample)}
+                className={`
+                  relative group p-6 bg-gray-800/50 hover:bg-gray-700/50 
+                  border border-gray-700/50 hover:border-${color}-500/50 
+                  rounded-xl transition-all duration-300 text-left
+                  hover:shadow-lg hover:shadow-${color}-500/10
+                  hover:transform hover:scale-105 overflow-hidden
+                `}
+              >
+                <div className={`absolute inset-0 bg-gradient-to-br from-${color}-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300`}></div>
+                <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-${color}-500/10 to-transparent rounded-full -mr-16 -mt-16 blur-2xl`}></div>
+                
+                <div className="relative z-10">
+                  <div className={`inline-flex p-3 bg-gradient-to-br from-${color}-500/20 to-${color}-600/20 rounded-xl mb-4`}>
+                    {sample.icon || <FileText className="w-6 h-6 text-${color}-400" />}
+                  </div>
+                  <h4 className="font-semibold text-white mb-2">{sample.title}</h4>
+                  <p className="text-sm text-gray-400">Click to load this sample claim document</p>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {/* Document Input */}
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold text-gray-100">Claim Document</h3>
-        
-        {/* File Upload Area */}
-        <div
-          className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200 ${
-            dragActive 
-              ? 'border-cyan-500 bg-cyan-500/10' 
-              : 'border-gray-600 bg-gray-800/50 hover:border-gray-500'
-          }`}
-          onDragEnter={handleDrag}
-          onDragLeave={handleDrag}
-          onDragOver={handleDrag}
-          onDrop={handleDrop}
-        >
-          <input
-            type="file"
-            multiple
-            onChange={(e) => handleFiles(e.target.files)}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            accept=".txt,.pdf,.doc,.docx,.jpg,.jpeg,.png,.json,.xml,.csv"
-          />
-          
-          <div className="text-center">
-            <Upload className={`w-12 h-12 mx-auto mb-4 ${
-              dragActive ? 'text-cyan-400' : 'text-gray-400'
-            }`} />
-            <p className="text-gray-300 font-medium mb-2">
-              Drop files here or click to upload
-            </p>
-            <p className="text-sm text-gray-400">
-              Supported: PDF, Word, Images, Text, JSON, XML, CSV
-            </p>
-          </div>
-        </div>
-
-        {/* Uploaded Files */}
-        {uploadedFiles.length > 0 && (
-          <div className="space-y-2">
-            <h4 className="text-sm font-medium text-gray-300">Uploaded Files:</h4>
-            {uploadedFiles.map((file, index) => (
-              <div key={index} className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  {getFileIcon(file)}
-                  <div>
-                    <p className="text-sm font-medium text-gray-100">{file.name}</p>
-                    <p className="text-xs text-gray-400">
-                      {(file.size / 1024).toFixed(1)} KB
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => removeFile(index)}
-                  className="text-gray-400 hover:text-red-400 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Text Input */}
-        <textarea
-          value={documentText}
-          onChange={(e) => setDocumentText(e.target.value)}
-          placeholder="Or paste your claim document text here..."
-          className="w-full h-64 px-4 py-3 bg-gray-800/50 border border-gray-700 rounded-lg text-gray-100 placeholder-gray-500 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-all duration-200 resize-none"
-        />
+        <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50 hover:shadow-xl transition-shadow duration-300">
+          <div className="px-6 py-4 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/50 to-gray-800/30">
+            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+              <FileText className="w-5 h-5 text-blue-400" />
+              Claim Document Text
+            </h3>
+          </div>
+          <CardBody className="p-6">
+            <textarea
+              value={documentText}
+              onChange={(e) => setDocumentText(e.target.value)}
+              placeholder="Paste your claim document text here..."
+              className="w-full h-64 px-4 py-3 bg-gray-700/50 text-gray-100 placeholder-gray-500 
+                       border border-gray-600 rounded-xl focus:outline-none focus:border-cyan-500/50 
+                       focus:ring-2 focus:ring-cyan-500/20 transition-all duration-300 resize-none
+                       scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800"
+            />
+            <div className="mt-3 flex items-center justify-between">
+              <span className="text-sm text-gray-500">
+                {documentText.length} characters
+              </span>
+              {documentText.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDocumentText('')}
+                  className="text-gray-400 hover:text-red-400"
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+          </CardBody>
+        </Card>
+
+        {/* File Upload */}
+        <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50 hover:shadow-xl transition-shadow duration-300">
+          <div className="px-6 py-4 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/50 to-gray-800/30">
+            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+              <Upload className="w-5 h-5 text-purple-400" />
+              Upload Documents
+            </h3>
+          </div>
+          <CardBody className="p-6">
+            <div
+              onDragEnter={handleDrag}
+              onDragLeave={handleDrag}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+              className={`
+                relative border-2 border-dashed rounded-xl p-8 text-center transition-all duration-300
+                ${dragActive 
+                  ? 'border-cyan-500 bg-cyan-500/10' 
+                  : 'border-gray-600 hover:border-gray-500 bg-gray-700/30 hover:bg-gray-700/50'
+                }
+              `}
+            >
+              <input
+                type="file"
+                multiple
+                onChange={(e) => handleFiles(e.target.files)}
+                className="hidden"
+                id="file-upload"
+                accept=".txt,.pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.bmp,.json,.xml,.csv"
+              />
+              
+              <label htmlFor="file-upload" className="cursor-pointer">
+                <div className="flex flex-col items-center">
+                  <div className={`
+                    p-4 rounded-full mb-4 transition-all duration-300
+                    ${dragActive 
+                      ? 'bg-cyan-500/20 scale-110' 
+                      : 'bg-purple-500/20 hover:bg-purple-500/30'
+                    }
+                  `}>
+                    <Upload className={`w-8 h-8 ${dragActive ? 'text-cyan-400' : 'text-purple-400'}`} />
+                  </div>
+                  <p className="text-white font-medium mb-2">
+                    {dragActive ? 'Drop files here' : 'Drop files or click to browse'}
+                  </p>
+                  <p className="text-sm text-gray-400">
+                    Supports: Images, PDFs, Word docs, Text files
+                  </p>
+                </div>
+              </label>
+            </div>
+
+            {/* Uploaded Files */}
+            {uploadedFiles.length > 0 && (
+              <div className="mt-4 space-y-2">
+                <h4 className="text-sm font-medium text-gray-400 mb-2">Uploaded Files:</h4>
+                {uploadedFiles.map((file, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg border border-gray-600 group hover:border-gray-500 transition-all">
+                    <div className="flex items-center gap-3">
+                      {getFileIcon(file)}
+                      <div>
+                        <p className="text-sm font-medium text-gray-200">{file.name}</p>
+                        <p className="text-xs text-gray-500">
+                          {(file.size / 1024).toFixed(1)} KB
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setUploadedFiles(prev => prev.filter((_, i) => i !== index))}
+                      className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 rounded transition-all"
+                    >
+                      <X className="w-4 h-4 text-red-400" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardBody>
+        </Card>
       </div>
 
       {/* Process Button */}
-      <button
-        onClick={processDocument}
-        disabled={processing || (!documentText.trim() && uploadedFiles.length === 0) || apiKeyStatus === 'error'}
-        className={`w-full py-4 px-6 rounded-lg font-medium transition-all duration-300 transform hover:scale-[1.02] disabled:hover:scale-100 ${
-          processing || (!documentText.trim() && uploadedFiles.length === 0) || apiKeyStatus === 'error'
-            ? 'bg-gray-700 text-gray-400 cursor-not-allowed' 
+      <div className="flex justify-center">
+        <Button
+          onClick={processDocument}
+          disabled={processing || apiKeyStatus !== 'configured'}
+          size="lg"
+          className={`
+            relative px-8 py-4 text-lg font-semibold rounded-xl transition-all duration-300
+            ${processing ? 'bg-gray-700 text-gray-400 cursor-not-allowed' 
             : apiKeyStatus === 'configured'
-            ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:from-cyan-400 hover:to-blue-500 shadow-lg hover:shadow-cyan-500/25'
-            : 'bg-gradient-to-r from-gray-600 to-gray-700 text-gray-300 hover:from-gray-500 hover:to-gray-600'
-        } group flex items-center justify-center gap-3`}
-      >
-        {processing ? (
-          <>
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-              <Zap className="w-5 h-5 animate-pulse" />
+            ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:from-cyan-400 hover:to-blue-500 shadow-lg hover:shadow-cyan-500/25 transform hover:scale-105'
+            : 'bg-gray-700 text-gray-400 cursor-not-allowed'}
+            group overflow-hidden
+          `}
+        >
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
+          {processing ? (
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
+                </div>
+              </div>
+              <span>Processing with AI...</span>
+              <Brain className="w-6 h-6 animate-pulse" />
             </div>
-            Processing with AI...
-          </>
-        ) : (
-          <>
-            <Upload className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
-            {apiKeyStatus === 'configured' ? 'Process Claim with NeuroClaim AI' : 'Try Demo Interface (AI Processing Requires API Key)'}
-          </>
-        )}
-      </button>
+          ) : (
+            <div className="flex items-center gap-3">
+              <Zap className="w-6 h-6" />
+              <span>{apiKeyStatus === 'configured' ? 'Process with NeuroClaim AI' : 'Demo Mode - Configure API Key'}</span>
+              <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
+            </div>
+          )}
+        </Button>
+      </div>
 
       {/* Results Section */}
       {currentResult && (
-        <div className="bg-gray-800/50 backdrop-blur-xl border border-gray-700 rounded-xl shadow-lg p-8 transform transition-all duration-500 animate-in slide-in-from-bottom">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-3 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl">
-              <CheckCircle className="w-6 h-6 text-white" />
-            </div>
-            <h2 className="text-2xl font-bold text-gray-100">
-              AI Analysis Results
+        <div className="mt-8 space-y-6 animate-fadeIn">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+              <div className="p-3 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl">
+                <CheckCircle className="w-6 h-6 text-white" />
+              </div>
+              AI Analysis Complete
             </h2>
+            <Badge className="bg-green-500/20 text-green-400 border-green-500/30 px-4 py-2">
+              Processing Time: {(currentResult.processingTimeMs / 1000).toFixed(1)}s
+            </Badge>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Results Cards */}
+          <div className="space-y-6">
             {/* Extracted Information */}
-            <div className="bg-gray-700/50 p-6 rounded-xl border border-gray-600">
-              <h3 className="font-bold text-cyan-400 mb-4 flex items-center gap-2">
-                <FileText className="w-5 h-5" />
-                Extracted Information
-              </h3>
-              <div className="space-y-3 text-sm">
-                {[
-                  { label: 'Claim Number', value: currentResult.extractedData?.claimNumber || 'Not found' },
-                  { label: 'Claimant', value: currentResult.extractedData?.claimantName || 'Not found' },
-                  { label: 'Type', value: currentResult.extractedData?.claimType || 'Unknown' },
-                  { label: 'Amount', value: currentResult.extractedData?.estimatedAmount ? formatCurrency(currentResult.extractedData.estimatedAmount) : 'Not specified' },
-                  { label: 'Date', value: currentResult.extractedData?.dateOfIncident || 'Not found' },
-                  { label: 'Confidence', value: currentResult.extractedData?.confidence || 'Unknown' }
-                ].map((item, index) => (
-                  <div key={index} className="flex justify-between items-center">
-                    <span className="text-gray-400">{item.label}:</span>
-                    <span className="font-medium text-gray-100">{item.value}</span>
-                  </div>
-                ))}
+            <Card className={`bg-gray-800/50 backdrop-blur-sm border-gray-700/50 transition-all duration-300 ${expandedSections.extraction ? 'hover:shadow-xl' : ''}`}>
+              <div 
+                className="px-6 py-4 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/50 to-gray-800/30 cursor-pointer"
+                onClick={() => toggleSection('extraction')}
+              >
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-white flex items-center gap-3">
+                    <div className="p-2 bg-blue-500/20 rounded-lg">
+                      <FileText className="w-5 h-5 text-blue-400" />
+                    </div>
+                    Extracted Information
+                  </h3>
+                  {expandedSections.extraction ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                </div>
               </div>
-            </div>
+              {expandedSections.extraction && (
+                <CardBody className="p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {[
+                      { label: 'Claim Number', value: currentResult.extractedData?.claimNumber || 'Not found', icon: Hash },
+                      { label: 'Claimant', value: currentResult.extractedData?.claimantName || 'Not found', icon: User },
+                      { label: 'Type', value: currentResult.extractedData?.claimType || 'Unknown', icon: Tag },
+                      { label: 'Amount', value: formatCurrency(currentResult.extractedData?.estimatedAmount || 0), icon: DollarSign },
+                      { label: 'Date of Incident', value: currentResult.extractedData?.dateOfIncident || 'Not found', icon: Calendar },
+                      { label: 'Location', value: currentResult.extractedData?.incidentLocation || 'Not found', icon: MapPin }
+                    ].map((item, index) => (
+                      <div key={index} className="flex items-start gap-3 p-3 bg-gray-700/30 rounded-lg">
+                        <div className="p-2 bg-gray-600/50 rounded-lg">
+                          <item.icon className="w-4 h-4 text-gray-400" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm text-gray-400">{item.label}</p>
+                          <p className="font-medium text-white">{item.value}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {currentResult.extractedData?.confidence && (
+                    <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                      <p className="text-sm text-blue-400">
+                        Extraction Confidence: <span className="font-semibold capitalize">{currentResult.extractedData.confidence}</span>
+                      </p>
+                    </div>
+                  )}
+                </CardBody>
+              )}
+            </Card>
 
             {/* Fraud Assessment */}
-            <div className="bg-gray-700/50 p-6 rounded-xl border border-gray-600">
-              <h3 className="font-bold text-red-400 mb-4 flex items-center gap-2">
-                <Shield className="w-5 h-5" />
-                Fraud Assessment
-              </h3>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-400">Risk Level:</span>
-                  <Badge variant={
-                    currentResult.fraudAssessment?.riskLevel === 'low' ? 'success' :
-                    currentResult.fraudAssessment?.riskLevel === 'medium' ? 'warning' :
-                    currentResult.fraudAssessment?.riskLevel === 'high' ? 'danger' : 'secondary'
-                  }>
-                    {currentResult.fraudAssessment?.riskLevel || 'Unknown'} Risk
-                  </Badge>
-                </div>
-                
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-gray-400">Fraud Score:</span>
-                    <span className="font-bold text-xl text-gray-100">
-                      {((currentResult.fraudAssessment?.fraudScore || 0) * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                  <div className="w-full bg-gray-600 rounded-full h-2 overflow-hidden">
-                    <div 
-                      className={`h-full transition-all duration-1000 ${
-                        (currentResult.fraudAssessment?.fraudScore || 0) < 0.3 ? 'bg-green-500' :
-                        (currentResult.fraudAssessment?.fraudScore || 0) < 0.7 ? 'bg-yellow-500' :
-                        'bg-red-500'
-                      }`}
-                      style={{ width: `${(currentResult.fraudAssessment?.fraudScore || 0) * 100}%` }}
-                    />
-                  </div>
-                </div>
-
-                {currentResult.fraudAssessment?.redFlags && currentResult.fraudAssessment.redFlags.length > 0 && (
-                  <div>
-                    <p className="text-sm font-medium text-red-400 mb-2">Red Flags:</p>
-                    <ul className="space-y-1 text-xs text-gray-300">
-                      {currentResult.fraudAssessment.redFlags.map((flag, index) => (
-                        <li key={index} className="flex items-start gap-2">
-                          <AlertTriangle className="w-3 h-3 text-red-400 mt-0.5 flex-shrink-0" />
-                          <span>{flag}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Processing Recommendations */}
-          {currentResult.categorization?.processingRecommendations && (
-            <div className="mt-6 bg-gray-700/50 p-6 rounded-xl border border-gray-600">
-              <h3 className="font-bold text-blue-400 mb-4 flex items-center gap-2">
-                <Brain className="w-5 h-5" />
-                AI Recommendations
-              </h3>
-              <ul className="space-y-2">
-                {currentResult.categorization.processingRecommendations.map((rec, index) => (
-                  <li key={index} className="flex items-start gap-3">
-                    <div className="p-1 bg-blue-500/20 rounded">
-                      <CheckCircle className="w-4 h-4 text-blue-400" />
+            <Card className={`bg-gray-800/50 backdrop-blur-sm border-gray-700/50 transition-all duration-300 ${expandedSections.fraud ? 'hover:shadow-xl' : ''}`}>
+              <div 
+                className="px-6 py-4 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/50 to-gray-800/30 cursor-pointer"
+                onClick={() => toggleSection('fraud')}
+              >
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-white flex items-center gap-3">
+                    <div className="p-2 bg-red-500/20 rounded-lg">
+                      <Shield className="w-5 h-5 text-red-400" />
                     </div>
-                    <span className="text-sm text-gray-300">{rec}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+                    Fraud Risk Assessment
+                  </h3>
+                  {expandedSections.fraud ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                </div>
+              </div>
+              {expandedSections.fraud && currentResult.fraudAssessment && (
+                <CardBody className="p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <p className="text-sm text-gray-400 mb-1">Risk Level</p>
+                      <div className="flex items-center gap-3">
+                        <span className={`text-2xl font-bold capitalize ${
+                          currentResult.fraudAssessment.riskLevel === 'low' ? 'text-green-400' :
+                          currentResult.fraudAssessment.riskLevel === 'medium' ? 'text-yellow-400' :
+                          currentResult.fraudAssessment.riskLevel === 'high' ? 'text-orange-400' :
+                          'text-red-400'
+                        }`}>
+                          {currentResult.fraudAssessment.riskLevel}
+                        </span>
+                        <Badge className={`
+                          ${currentResult.fraudAssessment.riskLevel === 'low' ? 'bg-green-500/20 text-green-400 border-green-500/30' :
+                          currentResult.fraudAssessment.riskLevel === 'medium' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' :
+                          currentResult.fraudAssessment.riskLevel === 'high' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' :
+                          'bg-red-500/20 text-red-400 border-red-500/30'}
+                        `}>
+                          Score: {currentResult.fraudAssessment.riskScore}/100
+                        </Badge>
+                      </div>
+                    </div>
+                    
+                    <div className="text-right">
+                      <p className="text-sm text-gray-400 mb-1">Confidence</p>
+                      <p className="text-lg font-semibold text-white capitalize">{currentResult.fraudAssessment.confidence}</p>
+                    </div>
+                  </div>
+
+                  {/* Risk Indicators */}
+                  {currentResult.fraudAssessment.fraudIndicators?.length > 0 && (
+                    <div className="mb-6">
+                      <h4 className="text-sm font-medium text-gray-400 mb-3">Risk Indicators</h4>
+                      <div className="space-y-2">
+                        {currentResult.fraudAssessment.fraudIndicators.map((indicator, index) => (
+                          <div key={index} className="flex items-start gap-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                            <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5" />
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-red-300">{indicator.indicator}</p>
+                              <p className="text-xs text-red-400/70 mt-1">{indicator.explanation}</p>
+                            </div>
+                            <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-xs">
+                              {indicator.weight}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Recommendations */}
+                  {currentResult.fraudAssessment.recommendedActions?.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-400 mb-3">Recommended Actions</h4>
+                      <div className="space-y-2">
+                        {currentResult.fraudAssessment.recommendedActions.map((action, index) => (
+                          <div key={index} className="flex items-center gap-3 p-3 bg-gray-700/50 rounded-lg">
+                            <CheckCircle className="w-4 h-4 text-cyan-400" />
+                            <p className="text-sm text-gray-200">{action}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardBody>
+              )}
+            </Card>
+
+            {/* Summary & Next Steps */}
+            {currentResult.summary && (
+              <Card className={`bg-gray-800/50 backdrop-blur-sm border-gray-700/50 transition-all duration-300 ${expandedSections.summary ? 'hover:shadow-xl' : ''}`}>
+                <div 
+                  className="px-6 py-4 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/50 to-gray-800/30 cursor-pointer"
+                  onClick={() => toggleSection('summary')}
+                >
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-white flex items-center gap-3">
+                      <div className="p-2 bg-purple-500/20 rounded-lg">
+                        <FileCheck className="w-5 h-5 text-purple-400" />
+                      </div>
+                      Executive Summary
+                    </h3>
+                    {expandedSections.summary ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                  </div>
+                </div>
+                {expandedSections.summary && (
+                  <CardBody className="p-6">
+                    <div className="prose prose-invert max-w-none">
+                      <p className="text-gray-300 leading-relaxed">{currentResult.summary.executiveSummary}</p>
+                      
+                      {currentResult.summary.timeline && (
+                        <div className="mt-4 p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+                          <p className="text-sm text-purple-300">
+                            <Clock className="w-4 h-4 inline mr-2" />
+                            Expected Timeline: {currentResult.summary.timeline}
+                          </p>
+                        </div>
+                      )}
+
+                      {currentResult.actionPlan?.length > 0 && (
+                        <div className="mt-6">
+                          <h4 className="text-lg font-semibold text-white mb-4">Action Plan</h4>
+                          <div className="space-y-3">
+                            {currentResult.actionPlan.map((action, index) => (
+                              <div key={index} className="flex items-start gap-3 p-4 bg-gray-700/50 rounded-lg border border-gray-600">
+                                <div className={`p-2 rounded-lg ${
+                                  action.priority === 'urgent' ? 'bg-red-500/20' :
+                                  action.priority === 'high' ? 'bg-orange-500/20' :
+                                  'bg-blue-500/20'
+                                }`}>
+                                  <Zap className={`w-4 h-4 ${
+                                    action.priority === 'urgent' ? 'text-red-400' :
+                                    action.priority === 'high' ? 'text-orange-400' :
+                                    'text-blue-400'
+                                  }`} />
+                                </div>
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <p className="font-medium text-white">{action.action}</p>
+                                    <Badge className={`text-xs ${
+                                      action.priority === 'urgent' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
+                                      action.priority === 'high' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' :
+                                      'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                                    }`}>
+                                      {action.priority}
+                                    </Badge>
+                                  </div>
+                                  <ul className="text-sm text-gray-400 space-y-1">
+                                    {action.details?.map((detail, idx) => (
+                                      <li key={idx} className="flex items-start gap-2">
+                                        <span className="text-gray-500 mt-0.5">•</span>
+                                        <span>{detail}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </CardBody>
+                )}
+              </Card>
+            )}
+          </div>
         </div>
       )}
     </div>
   );
 
-  const renderClaimsTab = () => (
+  const renderHistoryTab = () => (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-gray-100">Processed Claims History</h3>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => {
-            setAllClaims([]);
-            setAnalytics(null);
-          }}
-        >
-          <RefreshCw className="w-4 h-4 mr-2" />
-          Clear History
-        </Button>
-      </div>
-
       {allClaims.length === 0 ? (
-        <div className="text-center py-12 bg-gray-800/50 rounded-lg border border-gray-700">
-          <FileText className="w-12 h-12 text-gray-500 mx-auto mb-4" />
-          <p className="text-gray-400">No claims processed yet</p>
-          <p className="text-sm text-gray-500 mt-2">Process a claim to see it here</p>
+        <div className="text-center py-16">
+          <div className="relative inline-flex mb-6">
+            <div className="absolute inset-0 bg-cyan-500 blur-3xl opacity-20"></div>
+            <div className="relative p-6 bg-gradient-to-br from-cyan-500/20 to-blue-500/20 rounded-2xl border border-cyan-500/30">
+              <Database className="w-12 h-12 text-cyan-400" />
+            </div>
+          </div>
+          <h3 className="text-xl font-medium text-gray-300 mb-2">No claims processed yet</h3>
+          <p className="text-gray-500">Process your first claim to see it here</p>
         </div>
       ) : (
         <div className="space-y-4">
-          {allClaims.map((claim) => (
-            <div 
-              key={claim.id} 
-              className="bg-gray-800/50 border border-gray-700 rounded-lg p-6 hover:border-cyan-500/50 transition-all duration-200 cursor-pointer"
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-semibold text-white">Processing History</h3>
+            <Badge className="bg-gray-700 text-gray-300 border-gray-600">
+              {allClaims.length} claims
+            </Badge>
+          </div>
+
+          {allClaims.map((claim, index) => (
+            <Card 
+              key={claim.processingId} 
+              className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50 hover:shadow-xl transition-all duration-300 cursor-pointer"
               onClick={() => setSelectedClaim(claim)}
             >
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h4 className="font-semibold text-gray-100">
-                    {claim.extractedData?.claimNumber || `Claim #${claim.id.slice(0, 8)}`}
-                  </h4>
-                  <p className="text-sm text-gray-400 mt-1">
-                    {claim.extractedData?.claimantName || 'Unknown Claimant'}
-                  </p>
+              <CardBody className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-3">
+                      <Badge className={`
+                        ${claim.status === 'completed' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}
+                      `}>
+                        {claim.status === 'completed' ? <CheckCircle className="w-3 h-3 mr-1" /> : <X className="w-3 h-3 mr-1" />}
+                        {claim.status}
+                      </Badge>
+                      
+                      <Badge className={`
+                        ${claim.fraudAssessment?.riskLevel === 'low' ? 'bg-green-500/20 text-green-400 border-green-500/30' :
+                        claim.fraudAssessment?.riskLevel === 'medium' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' :
+                        claim.fraudAssessment?.riskLevel === 'high' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' :
+                        'bg-red-500/20 text-red-400 border-red-500/30'}
+                      `}>
+                        <Shield className="w-3 h-3 mr-1" />
+                        {claim.fraudAssessment?.riskLevel || 'unknown'} risk
+                      </Badge>
+                    </div>
+                    
+                    <h4 className="font-semibold text-white text-lg mb-1">
+                      {claim.extractedData?.claimNumber || claim.processingId}
+                    </h4>
+                    <p className="text-sm text-gray-400">
+                      {claim.extractedData?.claimantName || 'Unknown'} • 
+                      {claim.extractedData?.claimType || 'Unknown type'} • 
+                      {formatCurrency(claim.extractedData?.estimatedAmount || 0)}
+                    </p>
+                  </div>
+                  
+                  <div className="text-right">
+                    <p className="text-sm text-gray-500">
+                      {new Date(claim.timestamp).toLocaleDateString()}
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      {claim.processingTimeMs ? `${(claim.processingTimeMs / 1000).toFixed(1)}s` : 'N/A'}
+                    </p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-bold text-lg text-gray-100">
-                    {formatCurrency(claim.extractedData?.estimatedAmount || 0)}
-                  </p>
-                  <Badge variant={
-                    claim.fraudAssessment?.riskLevel === 'low' ? 'success' :
-                    claim.fraudAssessment?.riskLevel === 'medium' ? 'warning' :
-                    'danger'
-                  }>
-                    {claim.fraudAssessment?.riskLevel || 'Unknown'} Risk
-                  </Badge>
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div>
-                  <p className="text-gray-500">Type</p>
-                  <p className="font-medium text-gray-300 capitalize">
-                    {claim.extractedData?.claimType || 'N/A'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Status</p>
-                  <p className="font-medium text-gray-300">
-                    {claim.status || 'Processed'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Fraud Score</p>
-                  <p className="font-medium text-gray-300">
-                    {((claim.fraudAssessment?.fraudScore || 0) * 100).toFixed(0)}%
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Processing Time</p>
-                  <p className="font-medium text-gray-300">
-                    {claim.processingTimeMs ? `${(claim.processingTimeMs / 1000).toFixed(1)}s` : 'N/A'}
-                  </p>
-                </div>
-              </div>
-            </div>
+              </CardBody>
+            </Card>
           ))}
         </div>
       )}
@@ -681,31 +866,30 @@ const processDocument = async () => {
       {/* Claim Detail Modal */}
       {selectedClaim && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-800 rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-gray-800 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
             <div className="sticky top-0 bg-gray-800 p-6 border-b border-gray-700 flex justify-between items-center">
-              <h2 className="text-2xl font-bold text-gray-100">
+              <h2 className="text-2xl font-bold text-white">
                 Claim Details: {selectedClaim.extractedData?.claimNumber || 'Unknown'}
               </h2>
               <button
                 onClick={() => setSelectedClaim(null)}
-                className="text-gray-400 hover:text-gray-300"
+                className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
               >
-                <X className="w-6 h-6" />
+                <X className="w-6 h-6 text-gray-400" />
               </button>
             </div>
             
-            <div className="p-6 space-y-6">
-              {/* Full claim details here */}
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <h3 className="font-semibold text-cyan-400">Extracted Data</h3>
-                  <pre className="bg-gray-900 p-4 rounded-lg text-xs text-gray-300 overflow-x-auto">
+            <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(90vh-88px)]">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <h3 className="font-semibold text-cyan-400 mb-3">Extracted Data</h3>
+                  <pre className="bg-gray-900/50 p-4 rounded-xl text-xs text-gray-300 overflow-x-auto border border-gray-700">
                     {JSON.stringify(selectedClaim.extractedData, null, 2)}
                   </pre>
                 </div>
-                <div className="space-y-4">
-                  <h3 className="font-semibold text-cyan-400">Fraud Assessment</h3>
-                  <pre className="bg-gray-900 p-4 rounded-lg text-xs text-gray-300 overflow-x-auto">
+                <div>
+                  <h3 className="font-semibold text-red-400 mb-3">Fraud Assessment</h3>
+                  <pre className="bg-gray-900/50 p-4 rounded-xl text-xs text-gray-300 overflow-x-auto border border-gray-700">
                     {JSON.stringify(selectedClaim.fraudAssessment, null, 2)}
                   </pre>
                 </div>
@@ -713,8 +897,8 @@ const processDocument = async () => {
               
               {selectedClaim.validation && (
                 <div>
-                  <h3 className="font-semibold text-cyan-400 mb-2">Validation Results</h3>
-                  <pre className="bg-gray-900 p-4 rounded-lg text-xs text-gray-300 overflow-x-auto">
+                  <h3 className="font-semibold text-blue-400 mb-3">Validation Results</h3>
+                  <pre className="bg-gray-900/50 p-4 rounded-xl text-xs text-gray-300 overflow-x-auto border border-gray-700">
                     {JSON.stringify(selectedClaim.validation, null, 2)}
                   </pre>
                 </div>
@@ -726,161 +910,293 @@ const processDocument = async () => {
     </div>
   );
 
-  const renderAnalyticsTab = () => (
-    <div className="space-y-6">
-      <h3 className="text-lg font-semibold text-gray-100">Processing Analytics</h3>
-      
-      {!analytics || allClaims.length === 0 ? (
-        <div className="text-center py-12 bg-gray-800/50 rounded-lg border border-gray-700">
-          <BarChart3 className="w-12 h-12 text-gray-500 mx-auto mb-4" />
-          <p className="text-gray-400">No analytics data available</p>
-          <p className="text-sm text-gray-500 mt-2">Process some claims to see analytics</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Summary Stats */}
-          <Card className="bg-gray-800/50 border-gray-700">
-            <CardBody>
-              <div className="flex items-center justify-between mb-4">
-                <FileText className="w-8 h-8 text-blue-500" />
-              </div>
-              <p className="text-sm text-gray-400 mb-1">Total Claims</p>
-              <p className="text-2xl font-bold text-gray-100">{analytics.totalClaims}</p>
-            </CardBody>
-          </Card>
+  const renderAnalyticsTab = () => {
+    // Calculate additional analytics
+    const totalAmount = allClaims.reduce((sum, claim) => 
+      sum + (claim.extractedData?.estimatedAmount || 0), 0
+    );
+    
+    const averageFraudScore = allClaims.length > 0
+      ? allClaims.reduce((sum, claim) => 
+          sum + (claim.fraudAssessment?.riskScore || 0), 0
+        ) / allClaims.length / 100
+      : 0;
 
-          <Card className="bg-gray-800/50 border-gray-700">
-            <CardBody>
-              <div className="flex items-center justify-between mb-4">
-                <DollarSign className="w-8 h-8 text-green-500" />
+    return (
+      <div className="space-y-6">
+        <h3 className="text-xl font-semibold text-white mb-6">Processing Analytics</h3>
+        
+        {!analytics || allClaims.length === 0 ? (
+          <div className="text-center py-16">
+            <div className="relative inline-flex mb-6">
+              <div className="absolute inset-0 bg-purple-500 blur-3xl opacity-20"></div>
+              <div className="relative p-6 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-2xl border border-purple-500/30">
+                <BarChart3 className="w-12 h-12 text-purple-400" />
               </div>
-              <p className="text-sm text-gray-400 mb-1">Total Amount</p>
-              <p className="text-2xl font-bold text-gray-100">
-                {formatCurrency(analytics.totalAmount)}
-              </p>
-            </CardBody>
-          </Card>
-
-          <Card className="bg-gray-800/50 border-gray-700">
-            <CardBody>
-              <div className="flex items-center justify-between mb-4">
-                <Shield className="w-8 h-8 text-red-500" />
-              </div>
-              <p className="text-sm text-gray-400 mb-1">Average Fraud Score</p>
-              <p className="text-2xl font-bold text-gray-100">
-                {(analytics.averageFraudScore * 100).toFixed(0)}%
-              </p>
-            </CardBody>
-          </Card>
-
-          <Card className="bg-gray-800/50 border-gray-700">
-            <CardBody>
-              <div className="flex items-center justify-between mb-4">
-                <Clock className="w-8 h-8 text-purple-500" />
-              </div>
-              <p className="text-sm text-gray-400 mb-1">Avg Processing</p>
-              <p className="text-2xl font-bold text-gray-100">
-                {(analytics.averageProcessingTime / 1000).toFixed(1)}s
-              </p>
-            </CardBody>
-          </Card>
-
-          {/* Type Distribution */}
-          <div className="md:col-span-2 bg-gray-800/50 border border-gray-700 rounded-lg p-6">
-            <h4 className="font-semibold text-gray-100 mb-4">Claims by Type</h4>
-            <div className="space-y-3">
-              {Object.entries(analytics.typeDistribution).map(([type, data]) => (
-                <div key={type}>
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-sm text-gray-300 capitalize">{type}</span>
-                    <span className="text-sm text-gray-400">{data.count} claims</span>
-                  </div>
-                  <div className="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
-                    <div 
-                      className="h-full bg-gradient-to-r from-cyan-500 to-blue-600"
-                      style={{ width: `${(data.count / analytics.totalClaims) * 100}%` }}
-                    />
-                  </div>
-                </div>
+            </div>
+            <h3 className="text-xl font-medium text-gray-300 mb-2">No analytics data available</h3>
+            <p className="text-gray-500">Process some claims to see analytics</p>
+          </div>
+        ) : (
+          <div>
+            {/* Summary Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              {[
+                {
+                  title: "Total Claims",
+                  value: analytics.totalClaims,
+                  icon: FileText,
+                  gradient: 'from-blue-500 to-cyan-500',
+                  bgPattern: 'from-blue-500/10 to-cyan-500/10'
+                },
+                {
+                  title: "Total Amount",
+                  value: formatCurrency(totalAmount),
+                  icon: DollarSign,
+                  gradient: 'from-emerald-500 to-green-500',
+                  bgPattern: 'from-emerald-500/10 to-green-500/10'
+                },
+                {
+                  title: "Average Fraud Score",
+                  value: `${(averageFraudScore * 100).toFixed(0)}%`,
+                  icon: Shield,
+                  gradient: 'from-red-500 to-pink-500',
+                  bgPattern: 'from-red-500/10 to-pink-500/10'
+                },
+                {
+                  title: "Avg Processing",
+                  value: `${(analytics.averageProcessingTime / 1000).toFixed(1)}s`,
+                  icon: Clock,
+                  gradient: 'from-purple-500 to-pink-500',
+                  bgPattern: 'from-purple-500/10 to-pink-500/10'
+                }
+              ].map((stat, index) => (
+                <Card key={index} className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50 hover:shadow-xl transition-all duration-300 overflow-hidden group">
+                  <div className={`absolute inset-0 bg-gradient-to-br ${stat.bgPattern} opacity-50`}></div>
+                  <CardBody className="relative">
+                    <div className={`p-3 bg-gradient-to-br ${stat.gradient} rounded-xl shadow-lg mb-4 transform group-hover:scale-110 transition-transform duration-300`}>
+                      <stat.icon className="w-6 h-6 text-white" />
+                    </div>
+                    <p className="text-sm text-gray-400 mb-1">{stat.title}</p>
+                    <p className="text-2xl font-bold text-white">{stat.value}</p>
+                  </CardBody>
+                </Card>
               ))}
             </div>
-          </div>
 
-          {/* Risk Distribution */}
-          <div className="md:col-span-2 bg-gray-800/50 border border-gray-700 rounded-lg p-6">
-            <h4 className="font-semibold text-gray-100 mb-4">Risk Level Distribution</h4>
-            <div className="grid grid-cols-3 gap-4">
-              {Object.entries(analytics.riskLevelDistribution).map(([level, count]) => (
-                <div key={level} className="text-center">
-                  <div className={`text-3xl font-bold mb-2 ${
-                    level === 'low' ? 'text-green-400' :
-                    level === 'medium' ? 'text-yellow-400' :
-                    level === 'high' ? 'text-orange-400' :
-                    'text-red-400'
-                  }`}>
-                    {count}
-                  </div>
-                  <p className="text-sm text-gray-400 capitalize">{level} Risk</p>
+            {/* Distribution Charts */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Risk Distribution */}
+              <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50">
+                <div className="px-6 py-4 border-b border-gray-700/50">
+                  <h4 className="font-semibold text-white">Risk Level Distribution</h4>
                 </div>
-              ))}
+                <CardBody className="p-6">
+                  <div className="space-y-4">
+                    {Object.entries(analytics.riskDistribution || {}).map(([level, count]) => {
+                      const percentage = (count / analytics.totalClaims) * 100;
+                      const colors = {
+                        low: 'from-green-500 to-emerald-500',
+                        medium: 'from-yellow-500 to-amber-500',
+                        high: 'from-orange-500 to-red-500',
+                        critical: 'from-red-500 to-pink-500',
+                        unknown: 'from-gray-500 to-gray-600'
+                      };
+                      
+                      return (
+                        <div key={level} className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-300 capitalize">{level}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-gray-400">{count} claims</span>
+                              <span className="text-sm font-semibold text-white">{percentage.toFixed(0)}%</span>
+                            </div>
+                          </div>
+                          <div className="relative h-3 bg-gray-700/50 rounded-full overflow-hidden">
+                            <div 
+                              className={`absolute inset-y-0 left-0 bg-gradient-to-r ${colors[level] || colors.unknown} rounded-full transition-all duration-1000`}
+                              style={{ width: `${percentage}%` }}
+                            >
+                              <div className="absolute inset-0 bg-white/20 animate-shimmer"></div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardBody>
+              </Card>
+
+              {/* Claim Type Distribution */}
+              <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50">
+                <div className="px-6 py-4 border-b border-gray-700/50">
+                  <h4 className="font-semibold text-white">Claim Type Distribution</h4>
+                </div>
+                <CardBody className="p-6">
+                  <div className="space-y-4">
+                    {Object.entries(analytics.claimTypeDistribution || {}).map(([type, count]) => {
+                      const percentage = (count / analytics.totalClaims) * 100;
+                      const colors = [
+                        'from-blue-500 to-cyan-500',
+                        'from-purple-500 to-pink-500',
+                        'from-emerald-500 to-green-500',
+                        'from-amber-500 to-orange-500'
+                      ];
+                      const colorIndex = Object.keys(analytics.claimTypeDistribution).indexOf(type);
+                      
+                      return (
+                        <div key={type} className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-300 capitalize">{type}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-gray-400">{count}</span>
+                              <span className="text-sm font-semibold text-white">{percentage.toFixed(0)}%</span>
+                            </div>
+                          </div>
+                          <div className="relative h-3 bg-gray-700/50 rounded-full overflow-hidden">
+                            <div 
+                              className={`absolute inset-y-0 left-0 bg-gradient-to-r ${colors[colorIndex % colors.length]} rounded-full transition-all duration-1000`}
+                              style={{ width: `${percentage}%` }}
+                            >
+                              <div className="absolute inset-0 bg-white/20 animate-shimmer"></div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardBody>
+              </Card>
             </div>
           </div>
-        </div>
-      )}
-    </div>
-  );
-
-  const getFileIcon = (file) => {
-    if (file.type.startsWith('image/')) {
-      return <Image className="w-5 h-5 text-blue-400" />
-    } else if (file.type === 'application/pdf') {
-      return <File className="w-5 h-5 text-red-400" />
-    } else {
-      return <FileText className="w-5 h-5 text-gray-400" />
-    }
-  }
+        )}
+      </div>
+    );
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-8">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white relative">
+      {/* Animated Background */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -left-40 w-96 h-96 bg-purple-500/20 rounded-full blur-[128px] animate-float"></div>
+        <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-cyan-500/20 rounded-full blur-[128px] animate-float animation-delay-2000"></div>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/20 rounded-full blur-[128px] animate-float animation-delay-4000"></div>
+      </div>
+
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-3 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-xl">
-              <Brain className="w-8 h-8 text-white" />
+        <div className="text-center mb-12">
+          <div className="inline-flex items-center justify-center p-3 bg-gradient-to-r from-purple-500 to-pink-600 rounded-2xl mb-6">
+            <Brain className="w-8 h-8 text-white" />
+          </div>
+          <h1 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+            NeuroClaim AI Demo
+          </h1>
+          <p className="text-xl text-gray-400 max-w-3xl mx-auto">
+            Experience the power of AI-driven insurance claim processing with advanced fraud detection
+          </p>
+          
+          <div className="flex items-center justify-center gap-6 mt-6">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+              <span className="text-sm text-gray-400">Real-time Processing</span>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold text-white">NeuroClaim AI Demo</h1>
-              <p className="text-gray-400">Advanced insurance claim processing with fraud detection</p>
+            <div className="flex items-center gap-2">
+              <Bot className="w-4 h-4 text-purple-400" />
+              <span className="text-sm text-gray-400">Powered by Gemini AI</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-cyan-400" />
+              <span className="text-sm text-gray-400">Advanced Fraud Detection</span>
             </div>
           </div>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex gap-2 mb-8">
-          {[
-            { id: 'process', label: 'Process Claim', icon: FileText },
-            { id: 'claims', label: 'Claims History', icon: Activity },
-            { id: 'analytics', label: 'Analytics', icon: BarChart3 }
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
-                activeTab === tab.id
-                  ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white'
-                  : 'bg-gray-800/50 text-gray-400 hover:text-gray-300 hover:bg-gray-700/50'
-              }`}
-            >
-              <tab.icon className="w-4 h-4" />
-              {tab.label}
-            </button>
-          ))}
+        {/* Tabs */}
+        <div className="flex items-center justify-center mb-8">
+          <div className="inline-flex bg-gray-800/50 backdrop-blur-sm rounded-xl p-1 border border-gray-700">
+            {[
+              { id: 'process', label: 'Process Claim', icon: Zap },
+              { id: 'history', label: 'History', icon: Clock },
+              { id: 'analytics', label: 'Analytics', icon: BarChart3 }
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`
+                  relative px-6 py-3 rounded-lg font-medium transition-all duration-300 flex items-center gap-2
+                  ${activeTab === tab.id
+                    ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg'
+                    : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
+                  }
+                `}
+              >
+                {activeTab === tab.id && (
+                  <div className="absolute inset-0 bg-white/20 rounded-lg blur-sm"></div>
+                )}
+                <tab.icon className="w-4 h-4 relative z-10" />
+                <span className="relative z-10">{tab.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Content */}
-        {isLoaded && renderContent()}
+        {/* Tab Content */}
+        <div className="animate-fadeIn">
+          {activeTab === 'process' && renderProcessTab()}
+          {activeTab === 'history' && renderHistoryTab()}
+          {activeTab === 'analytics' && renderAnalyticsTab()}
+        </div>
       </div>
+
+      {/* Add custom styles */}
+      <style jsx>{`
+        @keyframes float {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-20px); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          25% { transform: translateX(-5px); }
+          75% { transform: translateX(5px); }
+        }
+        @keyframes shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(200%); }
+        }
+        .animate-float {
+          animation: float 6s ease-in-out infinite;
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.5s ease-out;
+        }
+        .animate-shake {
+          animation: shake 0.5s ease-in-out;
+        }
+        .animate-shimmer {
+          animation: shimmer 2s infinite;
+        }
+        .animation-delay-2000 {
+          animation-delay: 2s;
+        }
+        .animation-delay-4000 {
+          animation-delay: 4s;
+        }
+        .scrollbar-thin::-webkit-scrollbar {
+          width: 6px;
+        }
+        .scrollbar-thumb-gray-600::-webkit-scrollbar-thumb {
+          background-color: #4B5563;
+          border-radius: 3px;
+        }
+        .scrollbar-track-gray-800::-webkit-scrollbar-track {
+          background-color: #1F2937;
+        }
+      `}</style>
     </div>
   );
 };

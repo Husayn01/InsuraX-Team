@@ -8,10 +8,10 @@ const getGeminiConfig = () => {
     baseURL: 'https://generativelanguage.googleapis.com/v1beta',
     model: 'gemini-2.5-flash',
     generationConfig: {
-      temperature: 0.3,
+      temperature: 0.5, // Increased from 0.3 for better JSON formatting consistency
       topK: 40,
       topP: 0.95,
-      maxOutputTokens: 2048,
+      maxOutputTokens: 4096, // Increased from 2048 to prevent truncation
     },
     safetySettings: [
       {

@@ -1,42 +1,9 @@
 // services/fraudDetector.js
+import { JSONParser } from '../utils/jsonParser.js';
+
 export class FraudDetector {
   constructor(geminiClient) {
     this.client = geminiClient;
-  }
-
-  // Helper method to clean and parse JSON responses
-  parseJSONResponse(content) {
-    try {
-      let cleanContent = content.trim();
-      if (cleanContent.startsWith('```json')) {
-        cleanContent = cleanContent.replace(/```json\s*/, '').replace(/```\s*$/, '');
-      } else if (cleanContent.startsWith('```')) {
-        cleanContent = cleanContent.replace(/```\s*/, '').replace(/```\s*$/, '');
-      }
-      
-      // Remove any text before the first { or [
-      const jsonStart = Math.min(
-        cleanContent.indexOf('{') !== -1 ? cleanContent.indexOf('{') : Infinity,
-        cleanContent.indexOf('[') !== -1 ? cleanContent.indexOf('[') : Infinity
-      );
-      if (jsonStart !== Infinity && jsonStart > 0) {
-        cleanContent = cleanContent.substring(jsonStart);
-      }
-      
-      // Remove any text after the last } or ]
-      const lastBrace = cleanContent.lastIndexOf('}');
-      const lastBracket = cleanContent.lastIndexOf(']');
-      const jsonEnd = Math.max(lastBrace, lastBracket);
-      if (jsonEnd !== -1 && jsonEnd < cleanContent.length - 1) {
-        cleanContent = cleanContent.substring(0, jsonEnd + 1);
-      }
-      
-      return JSON.parse(cleanContent);
-    } catch (error) {
-      console.error('JSON parsing failed:', error);
-      console.error('Content was:', content);
-      throw new Error(`Failed to parse AI response as JSON: ${error.message}`);
-    }
   }
 
   async assessFraudRisk(claimData, additionalContext = '') {
@@ -47,60 +14,56 @@ export class FraudDetector {
       };
     }
 
-    const prompt = `You are an expert insurance fraud analyst. Analyze the following claim for potential fraud indicators:
+    const prompt = `Analyze this insurance claim for fraud risk and return ONLY a valid JSON object.
 
-Claim Information:
-${JSON.stringify(claimData, null, 2)}
-
-Additional Context:
-${additionalContext}
-
-Provide a fraud risk assessment in the following JSON format:
+Required JSON format:
 {
-  "riskLevel": "low|medium|high|critical",
+  "riskLevel": "low",
   "riskScore": 25,
   "fraudIndicators": [
     {
-      "indicator": "description of suspicious element",
-      "weight": "low|medium|high", 
-      "explanation": "why this is concerning"
+      "indicator": "description",
+      "weight": "low",
+      "explanation": "why concerning"
     }
   ],
   "legitimacyIndicators": [
     {
-      "indicator": "description of legitimate element",
-      "explanation": "why this supports legitimacy"
+      "indicator": "description",
+      "explanation": "why legitimate"
     }
   ],
-  "recommendedActions": [
-    "immediate approval|standard processing|additional verification|investigation|rejection"
-  ],
-  "investigationAreas": ["areas that need further investigation"],
-  "overallAssessment": "detailed explanation of the fraud risk assessment",
-  "confidence": "high|medium|low"
+  "recommendedActions": ["standard processing"],
+  "investigationAreas": ["area 1"],
+  "overallAssessment": "detailed explanation",
+  "confidence": "high"
 }
 
-Consider factors like:
-- Timing patterns and incident details
-- Claim amounts vs typical patterns  
-- Documentation quality and completeness
-- Incident circumstances and plausibility
-- Geographic and temporal factors
+Claim to analyze:
+${JSON.stringify(claimData, null, 2)}
 
-Return ONLY valid JSON, no other text.
+Additional context:
+${additionalContext}
 
-JSON:`;
+Rules:
+- riskLevel: low, medium, high, or critical
+- riskScore: 0-100
+- weight: low, medium, or high
+- confidence: high, medium, or low
+- recommendedActions: immediate approval, standard processing, additional verification, investigation, or rejection
+
+JSON output:`;
 
     try {
       const response = await this.client.chatCompletion([
         { 
           role: 'system', 
-          content: 'You are a meticulous fraud detection specialist with years of experience. Return only valid JSON without any explanatory text.' 
+          content: 'You are a fraud detection specialist that returns only valid JSON.' 
         },
         { role: 'user', content: prompt }
-      ]);
+      ], { expectJSON: true });
 
-      const assessment = this.parseJSONResponse(response.choices[0].message.content);
+      const assessment = JSONParser.parseAIResponse(response.choices[0].message.content);
 
       // Validate the response structure
       if (!assessment || typeof assessment !== 'object' || !assessment.riskLevel) {
@@ -115,7 +78,7 @@ JSON:`;
       console.error('Fraud assessment failed:', error);
       return {
         success: false,
-        error: `Fraud assessment failed: ${error.message}`,
+        error: error.message,
         assessment: null
       };
     }
@@ -129,49 +92,54 @@ JSON:`;
       };
     }
 
-    const prompt = `As a fraud detection AI, identify anomalies in this claim compared to typical patterns:
+    const prompt = `Detect anomalies in this claim and return ONLY a valid JSON object.
 
-Current Claim:
-${JSON.stringify(claimData, null, 2)}
-
-${historicalData.length > 0 ? `Historical Claims for Context:
-${JSON.stringify(historicalData.slice(0, 5), null, 2)}` : 'No historical data available'}
-
-Identify anomalies in JSON format:
+Required JSON format:
 {
-  "anomaliesDetected": true|false,
-  "anomalyScore": 0-100,
+  "anomaliesDetected": true,
+  "anomalyScore": 75,
   "anomalies": [
     {
-      "type": "timing|amount|pattern|behavior|documentation",
-      "description": "specific anomaly description",
-      "significance": "low|medium|high",
-      "comparison": "how this differs from normal patterns"
+      "type": "timing",
+      "description": "specific anomaly",
+      "significance": "high",
+      "comparison": "differs from normal"
     }
   ],
   "normalPatterns": [
     {
-      "pattern": "description of normal pattern",
-      "currentClaimAlignment": "matches|deviates|unclear"
+      "pattern": "normal pattern description",
+      "currentClaimAlignment": "matches"
     }
   ],
-  "recommendations": ["specific recommendations based on anomalies"]
+  "recommendations": ["recommendation 1"]
 }
 
-Return ONLY valid JSON.
+Current claim:
+${JSON.stringify(claimData, null, 2)}
 
-JSON:`;
+${historicalData.length > 0 ? `Historical data:
+${JSON.stringify(historicalData.slice(0, 5), null, 2)}` : ''}
+
+Rules:
+- anomaliesDetected: true or false
+- anomalyScore: 0-100
+- type: timing, amount, pattern, behavior, or documentation
+- significance: low, medium, or high
+- currentClaimAlignment: matches, deviates, or unclear
+
+JSON output:`;
 
     try {
       const response = await this.client.chatCompletion([
         { 
           role: 'system', 
-          content: 'You are an advanced anomaly detection system. Return only valid JSON.' 
+          content: 'You are an anomaly detection system that returns only valid JSON.' 
         },
         { role: 'user', content: prompt }
-      ]);
+      ], { expectJSON: true });
 
-      const anomalies = this.parseJSONResponse(response.choices[0].message.content);
+      const anomalies = JSONParser.parseAIResponse(response.choices[0].message.content);
 
       return {
         success: true,
@@ -181,7 +149,7 @@ JSON:`;
       console.error('Anomaly detection failed:', error);
       return {
         success: false,
-        error: `Anomaly detection failed: ${error.message}`
+        error: error.message
       };
     }
   }

@@ -12,8 +12,9 @@ class GeminiClient {
       console.warn('Gemini API key is not configured. Set VITE_GEMINI_API_KEY environment variable.');
       return false;
     }
-    if (!this.config.apiKey.includes('AI')) {
-      console.warn('Gemini API key format appears invalid.');
+    // Fixed: Removed invalid API key validation
+    if (this.config.apiKey.length < 20) {
+      console.warn('Gemini API key appears too short.');
       return false;
     }
     return true;
@@ -22,22 +23,26 @@ class GeminiClient {
   // Convert OpenAI-style messages to Gemini format
   convertMessagesToGeminiFormat(messages) {
     const contents = [];
+    let systemContext = '';
     
+    // First, extract all system messages
     for (const message of messages) {
       if (message.role === 'system') {
-        // Gemini doesn't have a system role, so we prepend it to the first user message
-        if (contents.length === 0 || contents[0].role !== 'user') {
-          contents.unshift({
-            role: 'user',
-            parts: [{ text: `System: ${message.content}\n\nUser: ` }]
-          });
-        } else {
-          contents[0].parts[0].text = `System: ${message.content}\n\n${contents[0].parts[0].text}`;
+        systemContext += message.content + '\n\n';
+      }
+    }
+    
+    // Then process user and assistant messages
+    for (const message of messages) {
+      if (message.role === 'user') {
+        let content = message.content;
+        // Prepend system context to the first user message
+        if (systemContext && contents.length === 0) {
+          content = `Context: ${systemContext.trim()}\n\n${content}`;
         }
-      } else if (message.role === 'user') {
         contents.push({
           role: 'user',
-          parts: [{ text: message.content }]
+          parts: [{ text: content }]
         });
       } else if (message.role === 'assistant') {
         contents.push({
@@ -50,7 +55,7 @@ class GeminiClient {
     return contents;
   }
 
-  async makeRequest(endpoint, payload) {
+  async makeRequest(endpoint, payload, retryCount = 0) {
     if (!this.isConfigValid) {
       throw new Error('Gemini API key is not configured or invalid. Please set VITE_GEMINI_API_KEY in your environment variables.');
     }
@@ -60,13 +65,20 @@ class GeminiClient {
       
       const url = `${this.config.baseURL}${endpoint}?key=${this.config.apiKey}`;
       
+      // Add timeout handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -77,11 +89,28 @@ class GeminiClient {
 
       const data = await response.json();
       console.log('Gemini request successful');
+      
+      // Debug logging for JSON responses
+      if (payload.contents && payload.contents[0] && payload.contents[0].parts[0].text.includes('JSON')) {
+        const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        console.log('AI Response Preview:', responseText.substring(0, 200) + '...');
+      }
+      
       return data;
     } catch (error) {
       console.error('Gemini API request failed:', error);
       
+      // Retry logic for transient failures
+      if (retryCount < 2 && (error.name === 'AbortError' || error.message.includes('fetch'))) {
+        console.log(`Retrying request... (attempt ${retryCount + 1})`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+        return this.makeRequest(endpoint, payload, retryCount + 1);
+      }
+      
       // Provide more specific error messages
+      if (error.name === 'AbortError') {
+        throw new Error('Request timeout: Gemini API took too long to respond.');
+      }
       if (error.message.includes('fetch')) {
         throw new Error('Network error: Unable to connect to Gemini API. Check your internet connection.');
       }
@@ -93,6 +122,43 @@ class GeminiClient {
       }
       
       throw error;
+    }
+  }
+
+  // Helper to validate and clean JSON responses
+  validateJSONResponse(text, expectJSON = false) {
+    if (!expectJSON) return text;
+    
+    let cleanText = '';
+    try {
+      // Try to parse as-is first
+      JSON.parse(text);
+      return text;
+    } catch (e) {
+      // If parsing fails, try to extract and clean JSON
+      cleanText = text.trim();
+      
+      // Remove markdown code blocks
+      cleanText = cleanText.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
+      
+      // Extract JSON from mixed content
+      const jsonMatch = cleanText.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+      if (jsonMatch) {
+        cleanText = jsonMatch[0];
+      }
+      
+      // Basic JSON fixes
+      cleanText = cleanText
+        .replace(/,\s*}/g, '}') // Remove trailing commas in objects
+        .replace(/,\s*\]/g, ']'); // Remove trailing commas in arrays
+      
+      try {
+        JSON.parse(cleanText);
+        return cleanText;
+      } catch (error) {
+        console.error('Failed to extract valid JSON from response:', text);
+        throw new Error('AI did not return valid JSON format');
+      }
     }
   }
 
@@ -117,11 +183,18 @@ class GeminiClient {
     const endpoint = `/models/${this.config.model}:generateContent`;
     const response = await this.makeRequest(endpoint, payload);
     
+    let responseText = response.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    
+    // Validate JSON if expected
+    if (options.expectJSON) {
+      responseText = this.validateJSONResponse(responseText, true);
+    }
+    
     // Format response to match OpenAI structure for easier migration
     return {
       choices: [{
         message: {
-          content: response.candidates?.[0]?.content?.parts?.[0]?.text || ''
+          content: responseText
         }
       }]
     };

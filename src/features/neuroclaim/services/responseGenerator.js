@@ -1,42 +1,9 @@
 // services/responseGenerator.js
+import { JSONParser } from '../utils/jsonParser.js';
+
 export class ResponseGenerator {
   constructor(geminiClient) {
     this.client = geminiClient;
-  }
-
-  // Helper method to clean and parse JSON responses
-  parseJSONResponse(content) {
-    try {
-      let cleanContent = content.trim();
-      if (cleanContent.startsWith('```json')) {
-        cleanContent = cleanContent.replace(/```json\s*/, '').replace(/```\s*$/, '');
-      } else if (cleanContent.startsWith('```')) {
-        cleanContent = cleanContent.replace(/```\s*/, '').replace(/```\s*$/, '');
-      }
-      
-      // Remove any text before the first { or [
-      const jsonStart = Math.min(
-        cleanContent.indexOf('{') !== -1 ? cleanContent.indexOf('{') : Infinity,
-        cleanContent.indexOf('[') !== -1 ? cleanContent.indexOf('[') : Infinity
-      );
-      if (jsonStart !== Infinity && jsonStart > 0) {
-        cleanContent = cleanContent.substring(jsonStart);
-      }
-      
-      // Remove any text after the last } or ]
-      const lastBrace = cleanContent.lastIndexOf('}');
-      const lastBracket = cleanContent.lastIndexOf(']');
-      const jsonEnd = Math.max(lastBrace, lastBracket);
-      if (jsonEnd !== -1 && jsonEnd < cleanContent.length - 1) {
-        cleanContent = cleanContent.substring(0, jsonEnd + 1);
-      }
-      
-      return JSON.parse(cleanContent);
-    } catch (error) {
-      console.error('JSON parsing failed:', error);
-      console.error('Content was:', content);
-      throw new Error(`Failed to parse AI response as JSON: ${error.message}`);
-    }
   }
 
   async generateClaimSummary(claimData, fraudAssessment, categorization) {
@@ -47,43 +14,40 @@ export class ResponseGenerator {
       };
     }
 
-    const prompt = `Create a comprehensive but concise claim summary for internal use:
+    const prompt = `Create a claim summary. Return ONLY a valid JSON object.
 
-Claim Data: ${JSON.stringify(claimData, null, 2)}
+Required JSON format:
+{
+  "executiveSummary": "2-3 sentence overview",
+  "keyDetails": {
+    "claimant": "John Doe",
+    "incident": "Rear-end collision",
+    "damages": "$5000 vehicle damage",
+    "riskFactors": "None identified"
+  },
+  "processingStatus": "Ready for standard processing",
+  "recommendations": ["Approve claim"],
+  "timeline": "3-5 business days",
+  "specialNotes": "No special considerations"
+}
+
+Data to summarize:
+Claim: ${JSON.stringify(claimData, null, 2)}
 Fraud Assessment: ${JSON.stringify(fraudAssessment, null, 2)}
 Categorization: ${JSON.stringify(categorization, null, 2)}
 
-Generate a summary in this format:
-{
-  "executiveSummary": "2-3 sentence overview of the claim situation and key points",
-  "keyDetails": {
-    "claimant": "name and basic info",
-    "incident": "what happened in clear terms", 
-    "damages": "description and estimated amount",
-    "riskFactors": "main concerns or risk indicators"
-  },
-  "processingStatus": "current status and next steps",
-  "recommendations": [
-    "actionable recommendations for claim handlers"
-  ],
-  "timeline": "expected processing timeline based on complexity",
-  "specialNotes": "any special considerations or flags"
-}
-
-Return ONLY valid JSON, no other text.
-
-JSON:`;
+JSON output:`;
 
     try {
       const response = await this.client.chatCompletion([
         { 
           role: 'system', 
-          content: 'You are a professional claims summarizer who creates clear, actionable summaries. Return only valid JSON.' 
+          content: 'You are a claims summarizer that returns only valid JSON.' 
         },
         { role: 'user', content: prompt }
-      ]);
+      ], { expectJSON: true });
 
-      const summary = this.parseJSONResponse(response.choices[0].message.content);
+      const summary = JSONParser.parseAIResponse(response.choices[0].message.content);
 
       return {
         success: true,
@@ -93,7 +57,7 @@ JSON:`;
       console.error('Summary generation failed:', error);
       return {
         success: false,
-        error: `Summary generation failed: ${error.message}`
+        error: error.message
       };
     }
   }
@@ -142,7 +106,7 @@ Return the response text directly, not as JSON.`;
       console.error('Customer response generation failed:', error);
       return {
         success: false,
-        error: `Customer response generation failed: ${error.message}`
+        error: error.message
       };
     }
   }
@@ -155,52 +119,48 @@ Return the response text directly, not as JSON.`;
       };
     }
 
-    const prompt = `Create an internal memo about this claim for management review:
+    const prompt = `Create an internal memo. Return ONLY a valid JSON object.
 
-Claim Data: ${JSON.stringify(claimData, null, 2)}
-Findings: ${JSON.stringify(findings, null, 2)}
-Recommendations: ${JSON.stringify(recommendations, null, 2)}
-
-Generate a structured internal memo with:
+Required JSON format:
 {
   "to": "Claims Management Team",
   "from": "AI Claims Processing System",
   "date": "${new Date().toLocaleDateString()}",
-  "subject": "concise subject line",
-  "priority": "urgent|high|normal|low",
-  "summary": "executive summary paragraph",
-  "keyFindings": [
-    "important finding 1",
-    "important finding 2"
-  ],
-  "recommendations": [
-    "recommendation 1",
-    "recommendation 2"
-  ],
+  "subject": "Claim Review - CLM123",
+  "priority": "normal",
+  "summary": "Summary paragraph",
+  "keyFindings": ["finding 1", "finding 2"],
+  "recommendations": ["recommendation 1"],
   "requiredActions": [
     {
-      "action": "specific action needed",
-      "responsible": "department or role",
-      "deadline": "timeframe"
+      "action": "Review claim",
+      "responsible": "Claims dept",
+      "deadline": "48 hours"
     }
   ],
-  "attachments": ["list of relevant documents or reports"]
+  "attachments": ["claim_form.pdf"]
 }
 
-Return ONLY valid JSON.
+Data for memo:
+Claim: ${JSON.stringify(claimData, null, 2)}
+Findings: ${JSON.stringify(findings, null, 2)}
+Recommendations: ${JSON.stringify(recommendations, null, 2)}
 
-JSON:`;
+Rules:
+- priority: urgent, high, normal, or low
+
+JSON output:`;
 
     try {
       const response = await this.client.chatCompletion([
         { 
           role: 'system', 
-          content: 'You are a professional memo writer who creates clear, actionable internal communications. Return only valid JSON.' 
+          content: 'You are a memo writer that returns only valid JSON.' 
         },
         { role: 'user', content: prompt }
-      ]);
+      ], { expectJSON: true });
 
-      const memo = this.parseJSONResponse(response.choices[0].message.content);
+      const memo = JSONParser.parseAIResponse(response.choices[0].message.content);
 
       return {
         success: true,
@@ -210,7 +170,7 @@ JSON:`;
       console.error('Internal memo generation failed:', error);
       return {
         success: false,
-        error: `Internal memo generation failed: ${error.message}`
+        error: error.message
       };
     }
   }

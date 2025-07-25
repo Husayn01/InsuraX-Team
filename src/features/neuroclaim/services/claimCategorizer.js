@@ -1,42 +1,9 @@
 // services/claimCategorizer.js
+import { JSONParser } from '../utils/jsonParser.js';
+
 export class ClaimCategorizer {
   constructor(geminiClient) {
     this.client = geminiClient;
-  }
-
-  // Helper method to clean and parse JSON responses
-  parseJSONResponse(content) {
-    try {
-      let cleanContent = content.trim();
-      if (cleanContent.startsWith('```json')) {
-        cleanContent = cleanContent.replace(/```json\s*/, '').replace(/```\s*$/, '');
-      } else if (cleanContent.startsWith('```')) {
-        cleanContent = cleanContent.replace(/```\s*/, '').replace(/```\s*$/, '');
-      }
-      
-      // Remove any text before the first { or [
-      const jsonStart = Math.min(
-        cleanContent.indexOf('{') !== -1 ? cleanContent.indexOf('{') : Infinity,
-        cleanContent.indexOf('[') !== -1 ? cleanContent.indexOf('[') : Infinity
-      );
-      if (jsonStart !== Infinity && jsonStart > 0) {
-        cleanContent = cleanContent.substring(jsonStart);
-      }
-      
-      // Remove any text after the last } or ]
-      const lastBrace = cleanContent.lastIndexOf('}');
-      const lastBracket = cleanContent.lastIndexOf(']');
-      const jsonEnd = Math.max(lastBrace, lastBracket);
-      if (jsonEnd !== -1 && jsonEnd < cleanContent.length - 1) {
-        cleanContent = cleanContent.substring(0, jsonEnd + 1);
-      }
-      
-      return JSON.parse(cleanContent);
-    } catch (error) {
-      console.error('JSON parsing failed:', error);
-      console.error('Content was:', content);
-      throw new Error(`Failed to parse AI response as JSON: ${error.message}`);
-    }
   }
 
   async categorizeAndPrioritize(claimData, fraudAssessment) {
@@ -54,59 +21,56 @@ export class ClaimCategorizer {
       };
     }
 
-    const prompt = `As a claims processing manager, categorize and prioritize this claim based on the information and fraud assessment:
+    const prompt = `Categorize and prioritize this claim. Return ONLY a valid JSON object.
 
-Claim Data:
-${JSON.stringify(claimData, null, 2)}
-
-Fraud Assessment:
-${JSON.stringify(fraudAssessment, null, 2)}
-
-Provide categorization and prioritization in this JSON format:
+Required JSON format:
 {
   "category": {
-    "primary": "auto_collision|auto_comprehensive|health_medical|health_dental|property_damage|property_theft|life|other",
-    "secondary": "specific subcategory",
-    "complexity": "simple|standard|complex|exceptional"
+    "primary": "auto_collision",
+    "secondary": "rear_end",
+    "complexity": "standard"
   },
   "priority": {
-    "level": "urgent|high|normal|low",
+    "level": "high",
     "score": 7,
-    "reasoning": "explanation for priority assignment"
+    "reasoning": "high amount claim"
   },
   "routing": {
-    "department": "auto_claims|health_claims|property_claims|special_investigations|fraud_unit",
-    "assignmentType": "automated|junior_adjuster|senior_adjuster|specialist|investigation_team",
-    "estimatedHandlingTime": "1-2 hours|1-2 days|3-5 days|1-2 weeks|extended_investigation"
+    "department": "auto_claims",
+    "assignmentType": "senior_adjuster",
+    "estimatedHandlingTime": "3-5 days"
   },
-  "processingRecommendations": [
-    "specific recommendations for processing this claim"
-  ],
-  "nextSteps": [
-    "immediate actions required"
-  ]
+  "processingRecommendations": ["recommendation 1"],
+  "nextSteps": ["step 1"]
 }
 
+Claim data:
+${JSON.stringify(claimData, null, 2)}
+
+Fraud assessment:
+${JSON.stringify(fraudAssessment, null, 2)}
+
 Rules:
-- Base priority on fraud risk, claim amount, complexity, and urgency
-- Route high-risk claims to appropriate investigation teams
-- Consider workload distribution and expertise requirements
-- Provide actionable next steps
+- primary: auto_collision, auto_comprehensive, health_medical, health_dental, property_damage, property_theft, life, or other
+- complexity: simple, standard, complex, or exceptional
+- level: urgent, high, normal, or low
+- score: 1-10
+- department: auto_claims, health_claims, property_claims, special_investigations, or fraud_unit
+- assignmentType: automated, junior_adjuster, senior_adjuster, specialist, or investigation_team
+- estimatedHandlingTime: 1-2 hours, 1-2 days, 3-5 days, 1-2 weeks, or extended_investigation
 
-Return ONLY valid JSON, no other text.
-
-JSON:`;
+JSON output:`;
 
     try {
       const response = await this.client.chatCompletion([
         { 
           role: 'system', 
-          content: 'You are an experienced claims manager who excels at efficient claim routing and prioritization. Return only valid JSON.' 
+          content: 'You are a claims categorization expert that returns only valid JSON.' 
         },
         { role: 'user', content: prompt }
-      ]);
+      ], { expectJSON: true });
 
-      const categorization = this.parseJSONResponse(response.choices[0].message.content);
+      const categorization = JSONParser.parseAIResponse(response.choices[0].message.content);
 
       // Validate the response structure
       if (!categorization || !categorization.category || !categorization.priority) {
@@ -121,7 +85,7 @@ JSON:`;
       console.error('Categorization failed:', error);
       return {
         success: false,
-        error: `Categorization failed: ${error.message}`
+        error: error.message
       };
     }
   }
@@ -134,33 +98,37 @@ JSON:`;
       };
     }
 
-    const prompt = `Based on this claim description, determine the claim type:
+    const prompt = `Determine claim type from description. Return ONLY a valid JSON object.
 
-Description: ${claimDescription}
-
-Return a JSON object:
+Required JSON format:
 {
-  "primaryType": "auto|health|property|life|liability|workers_comp|other",
-  "subType": "specific subcategory",
-  "confidence": "high|medium|low",
-  "keywords": ["relevant keywords identified"],
-  "requiresSpecialist": true|false
+  "primaryType": "auto",
+  "subType": "collision",
+  "confidence": "high",
+  "keywords": ["accident", "collision"],
+  "requiresSpecialist": false
 }
 
-Return ONLY valid JSON.
+Description:
+${claimDescription}
 
-JSON:`;
+Rules:
+- primaryType: auto, health, property, life, liability, workers_comp, or other
+- confidence: high, medium, or low
+- requiresSpecialist: true or false
+
+JSON output:`;
 
     try {
       const response = await this.client.chatCompletion([
         { 
           role: 'system', 
-          content: 'You are a claim type classification expert. Return only valid JSON.' 
+          content: 'You are a claim classification expert that returns only valid JSON.' 
         },
         { role: 'user', content: prompt }
-      ]);
+      ], { expectJSON: true });
 
-      const typeInfo = this.parseJSONResponse(response.choices[0].message.content);
+      const typeInfo = JSONParser.parseAIResponse(response.choices[0].message.content);
 
       return {
         success: true,
@@ -170,7 +138,7 @@ JSON:`;
       console.error('Claim type determination failed:', error);
       return {
         success: false,
-        error: `Claim type determination failed: ${error.message}`
+        error: error.message
       };
     }
   }
