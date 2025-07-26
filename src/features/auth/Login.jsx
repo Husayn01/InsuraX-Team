@@ -35,26 +35,31 @@ export const Login = () => {
   }, [location, navigate])
 
   const handleSubmit = async (e) => {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
+  e.preventDefault()
+  setError('')
+  setLoading(true)
 
-    try {
-      const result = await signIn(email, password)
-      
-      if (!result.success) {
-        setError(result.error || 'Failed to sign in')
-        setLoading(false)
-        return
-      }
-      
-      // Navigation is handled by AuthContext after successful sign in
+  try {
+    const result = await signIn(email, password)
+    
+    if (result.error) {
+      setError(result.error.message || 'Failed to sign in')
       setLoading(false)
-    } catch (err) {
-      setError('An unexpected error occurred')
-      setLoading(false)
+      return
     }
+    
+    // ✅ Sign in successful - navigation will be handled by auth context
+    // Just set a timeout to remove loading state if navigation doesn't happen
+    setTimeout(() => {
+      setLoading(false)
+    }, 2000) // Fallback to remove loading state
+    
+  } catch (err) {
+    console.error('Unexpected error during sign in:', err)
+    setError('An unexpected error occurred')
+    setLoading(false)
   }
+}
 
   const fillDemoCredentials = (type) => {
     if (type === 'customer') {

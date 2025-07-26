@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { 
   Shield, Menu, X, Home, FileText, CreditCard, 
   User, Bell, LogOut, Brain, BarChart3, Users,
-  Settings, ChevronDown, Activity
+  Settings, ChevronDown, Activity, 
 } from 'lucide-react'
 import { useAuth } from '@contexts/AuthContext'
 // Temporarily comment out the NotificationBell import
@@ -30,16 +30,24 @@ export const DashboardLayout = ({ children }) => {
     { name: 'Customers', href: '/insurer/customers', icon: Users },
     { name: 'Settings', href: '/insurer/settings', icon: Settings },
   ]
-
-  const handleSignOut = async () => {
-    await signOut()
-    navigate('/login')
-  }
-
+  // ✅ Move isActive function definition BEFORE handleSignOut
   const isActive = (href) => {
     return location.pathname.startsWith(href)
   }
-
+  
+const handleSignOut = async () => {
+  try {
+    // Show loading state or disable button
+    const result = await signOut()
+    
+    // Navigation is handled by signOut function
+    // Even if there's an error, user should be redirected
+  } catch (error) {
+    console.error('Logout error:', error)
+    // Force navigation even on error
+    navigate('/login')
+  }
+}
   return (
     <div className="min-h-screen bg-gray-900">
       {/* Sidebar for desktop */}

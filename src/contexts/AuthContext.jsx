@@ -63,6 +63,16 @@ export const AuthProvider = ({ children }) => {
                 await loadUserProfile(session.user.id)
               }
               break
+            case 'SIGNED_OUT':
+              setUser(null)
+              setProfile(null)
+              
+              // Only navigate if not already on login page
+              if (window.location.pathname !== '/login' && window.location.pathname !== '/signup' && window.location.pathname !== '/') {
+                console.log('Session expired, redirecting to login...')
+                navigate('/login')
+              }
+              break
               
             case 'SIGNED_OUT':
               setUser(null)
@@ -131,6 +141,18 @@ export const AuthProvider = ({ children }) => {
       console.error('❌ Unexpected error loading profile:', error)
     }
   }
+  useEffect(() => {
+  // Navigate after profile is loaded on sign in
+  if (user && profile && !loading) {
+    // Check if we're still on auth pages
+    const currentPath = window.location.pathname
+    if (currentPath === '/login' || currentPath === '/signup') {
+      const dashboardPath = profile.role === 'insurer' ? '/insurer/dashboard' : '/customer/dashboard'
+      console.log(`Redirecting ${profile.role} to ${dashboardPath}`)
+      navigate(dashboardPath)
+    }
+  }
+}, [user, profile, loading, navigate])
 
   const signUp = async (email, password, metadata = {}) => {
     try {
@@ -172,23 +194,48 @@ export const AuthProvider = ({ children }) => {
   }
 
   const signOut = async () => {
-    try {
-      setSessionError(null)
+  try {
+    setSessionError(null)
+    
+    // Check if there's an active session before trying to sign out
+    const { data: { session } } = await supabase.auth.getSession()
+    
+    if (session) {
+      // Only try to sign out if there's an active session
       const { error } = await supabaseHelpers.signOut()
       
-      if (error) throw error
-      
-      setUser(null)
-      setProfile(null)
-      navigate('/login')
-      
-      return { error: null }
-    } catch (error) {
-      console.error('Sign out error:', error)
-      setSessionError(error.message)
-      return { error }
+      if (error && !error.message.includes('session_not_found')) {
+        // Only log real errors, not "no session" errors
+        console.error('Sign out error:', error)
+        setSessionError(error.message)
+      }
+    } else {
+      console.log('No active session to sign out from')
     }
+    
+    // Always clear local state and navigate, regardless of signOut success
+    setUser(null)
+    setProfile(null)
+    
+    // Clear any stored tokens
+    localStorage.removeItem('insurax-auth-token')
+    
+    // Navigate to login
+    navigate('/login')
+    
+    return { error: null }
+  } catch (error) {
+    console.error('Sign out error:', error)
+    
+    // Even if there's an error, clear state and navigate
+    setUser(null)
+    setProfile(null)
+    localStorage.removeItem('insurax-auth-token')
+    navigate('/login')
+    
+    return { error }
   }
+}
 
   const refreshSession = async () => {
     if (isRefreshing) {
@@ -229,23 +276,30 @@ export const AuthProvider = ({ children }) => {
   // Check session validity on visibility change
   useEffect(() => {
     const handleVisibilityChange = async () => {
-      if (document.visibilityState === 'visible' && user && !isRefreshing) {
-        console.log('🔍 Tab became visible, checking session...')
-        
-        try {
-          const { data: { session }, error } = await supabase.auth.getSession()
-          
-          if (error || !session) {
-            console.log('⚠️ Session invalid or expired, attempting refresh...')
-            await refreshSession()
-          } else {
-            console.log('✅ Session still valid')
-          }
-        } catch (error) {
-          console.error('❌ Visibility change session check error:', error)
-        }
+  if (document.visibilityState === 'visible' && user && !isRefreshing) {
+    console.log('🔍 Tab became visible, checking session...')
+    
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession()
+      
+      if (error || !session) {
+        console.log('⚠️ Session invalid or expired')
+        // Instead of trying to refresh, just sign out
+        setUser(null)
+        setProfile(null)
+        navigate('/login')
+      } else {
+        console.log('✅ Session still valid')
       }
+    } catch (error) {
+      console.error('❌ Visibility change session check error:', error)
+      // On error, assume session is invalid
+      setUser(null)
+      setProfile(null)
+      navigate('/login')
     }
+  }
+}
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
     
