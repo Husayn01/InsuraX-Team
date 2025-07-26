@@ -19,8 +19,12 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true)
   const [sessionError, setSessionError] = useState(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isInitialized, setIsInitialized] = useState(false) // ✅ Add this flag
 
   useEffect(() => {
+    // ✅ Prevent re-initialization
+    if (isInitialized) return
+    
     let mounted = true
     let authListener = null
 
@@ -36,6 +40,7 @@ export const AuthProvider = ({ children }) => {
           setSessionError(error.message)
           if (mounted) {
             setLoading(false)
+            setIsInitialized(true) // ✅ Mark as initialized
           }
           return
         }
@@ -63,21 +68,17 @@ export const AuthProvider = ({ children }) => {
                 await loadUserProfile(session.user.id)
               }
               break
-            case 'SIGNED_OUT':
+              
+            case 'SIGNED_OUT': // ✅ Fixed: removed duplicate case
               setUser(null)
               setProfile(null)
               
-              // Only navigate if not already on login page
-              if (window.location.pathname !== '/login' && window.location.pathname !== '/signup' && window.location.pathname !== '/') {
+              // Only navigate if not already on public pages
+              const publicPaths = ['/login', '/signup', '/']
+              if (!publicPaths.includes(window.location.pathname)) {
                 console.log('Session expired, redirecting to login...')
-                navigate('/login')
+                window.location.href = '/login' // ✅ Use window.location to avoid dependency issues
               }
-              break
-              
-            case 'SIGNED_OUT':
-              setUser(null)
-              setProfile(null)
-              navigate('/login')
               break
               
             case 'TOKEN_REFRESHED':
@@ -105,6 +106,7 @@ export const AuthProvider = ({ children }) => {
       } finally {
         if (mounted) {
           setLoading(false)
+          setIsInitialized(true) // ✅ Mark as initialized
           console.log('✅ AuthContext: Initial loading complete')
         }
       }
@@ -117,7 +119,7 @@ export const AuthProvider = ({ children }) => {
       mounted = false
       authListener?.data?.subscription?.unsubscribe()
     }
-  }, [navigate])
+  }, []) // ✅ Remove navigate from dependencies
 
   const loadUserProfile = async (userId) => {
     if (!userId) return
@@ -141,18 +143,19 @@ export const AuthProvider = ({ children }) => {
       console.error('❌ Unexpected error loading profile:', error)
     }
   }
+
+  // ✅ Separate effect for navigation after login
   useEffect(() => {
-  // Navigate after profile is loaded on sign in
-  if (user && profile && !loading) {
-    // Check if we're still on auth pages
-    const currentPath = window.location.pathname
-    if (currentPath === '/login' || currentPath === '/signup') {
-      const dashboardPath = profile.role === 'insurer' ? '/insurer/dashboard' : '/customer/dashboard'
-      console.log(`Redirecting ${profile.role} to ${dashboardPath}`)
-      navigate(dashboardPath)
+    // Only navigate after everything is loaded and initialized
+    if (user && profile && !loading && isInitialized) {
+      const currentPath = window.location.pathname
+      if (currentPath === '/login' || currentPath === '/signup') {
+        const dashboardPath = profile.role === 'insurer' ? '/insurer/dashboard' : '/customer/dashboard'
+        console.log(`Redirecting ${profile.role} to ${dashboardPath}`)
+        navigate(dashboardPath)
+      }
     }
-  }
-}, [user, profile, loading, navigate])
+  }, [user, profile, loading, isInitialized, navigate])
 
   const signUp = async (email, password, metadata = {}) => {
     try {
@@ -194,48 +197,48 @@ export const AuthProvider = ({ children }) => {
   }
 
   const signOut = async () => {
-  try {
-    setSessionError(null)
-    
-    // Check if there's an active session before trying to sign out
-    const { data: { session } } = await supabase.auth.getSession()
-    
-    if (session) {
-      // Only try to sign out if there's an active session
-      const { error } = await supabaseHelpers.signOut()
+    try {
+      setSessionError(null)
       
-      if (error && !error.message.includes('session_not_found')) {
-        // Only log real errors, not "no session" errors
-        console.error('Sign out error:', error)
-        setSessionError(error.message)
+      // Check if there's an active session before trying to sign out
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (session) {
+        // Only try to sign out if there's an active session
+        const { error } = await supabaseHelpers.signOut()
+        
+        if (error && !error.message.includes('session_not_found')) {
+          // Only log real errors, not "no session" errors
+          console.error('Sign out error:', error)
+          setSessionError(error.message)
+        }
+      } else {
+        console.log('No active session to sign out from')
       }
-    } else {
-      console.log('No active session to sign out from')
+      
+      // Always clear local state and navigate, regardless of signOut success
+      setUser(null)
+      setProfile(null)
+      
+      // Clear any stored tokens
+      localStorage.removeItem('insurax-auth-token')
+      
+      // ✅ Use window.location to avoid dependency issues
+      window.location.href = '/login'
+      
+      return { error: null }
+    } catch (error) {
+      console.error('Sign out error:', error)
+      
+      // Even if there's an error, clear state and navigate
+      setUser(null)
+      setProfile(null)
+      localStorage.removeItem('insurax-auth-token')
+      window.location.href = '/login'
+      
+      return { error }
     }
-    
-    // Always clear local state and navigate, regardless of signOut success
-    setUser(null)
-    setProfile(null)
-    
-    // Clear any stored tokens
-    localStorage.removeItem('insurax-auth-token')
-    
-    // Navigate to login
-    navigate('/login')
-    
-    return { error: null }
-  } catch (error) {
-    console.error('Sign out error:', error)
-    
-    // Even if there's an error, clear state and navigate
-    setUser(null)
-    setProfile(null)
-    localStorage.removeItem('insurax-auth-token')
-    navigate('/login')
-    
-    return { error }
   }
-}
 
   const refreshSession = async () => {
     if (isRefreshing) {
@@ -276,37 +279,37 @@ export const AuthProvider = ({ children }) => {
   // Check session validity on visibility change
   useEffect(() => {
     const handleVisibilityChange = async () => {
-  if (document.visibilityState === 'visible' && user && !isRefreshing) {
-    console.log('🔍 Tab became visible, checking session...')
-    
-    try {
-      const { data: { session }, error } = await supabase.auth.getSession()
-      
-      if (error || !session) {
-        console.log('⚠️ Session invalid or expired')
-        // Instead of trying to refresh, just sign out
-        setUser(null)
-        setProfile(null)
-        navigate('/login')
-      } else {
-        console.log('✅ Session still valid')
+      if (document.visibilityState === 'visible' && user && !isRefreshing) {
+        console.log('🔍 Tab became visible, checking session...')
+        
+        try {
+          const { data: { session }, error } = await supabase.auth.getSession()
+          
+          if (error || !session) {
+            console.log('⚠️ Session invalid or expired')
+            // Instead of trying to refresh, just sign out
+            setUser(null)
+            setProfile(null)
+            window.location.href = '/login' // ✅ Use window.location
+          } else {
+            console.log('✅ Session still valid')
+          }
+        } catch (error) {
+          console.error('❌ Visibility change session check error:', error)
+          // On error, assume session is invalid
+          setUser(null)
+          setProfile(null)
+          window.location.href = '/login' // ✅ Use window.location
+        }
       }
-    } catch (error) {
-      console.error('❌ Visibility change session check error:', error)
-      // On error, assume session is invalid
-      setUser(null)
-      setProfile(null)
-      navigate('/login')
     }
-  }
-}
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
     
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [user, isRefreshing])
+  }, [user, isRefreshing]) // ✅ Remove navigate from dependencies
 
   // Periodic session check (every 10 minutes while tab is active)
   useEffect(() => {
@@ -330,7 +333,7 @@ export const AuthProvider = ({ children }) => {
     }, 10 * 60 * 1000) // 10 minutes
 
     return () => clearInterval(checkInterval)
-  }, [user, isRefreshing])
+  }, [user, isRefreshing]) // ✅ Remove unnecessary dependencies
 
   const value = {
     user,
@@ -343,7 +346,8 @@ export const AuthProvider = ({ children }) => {
     sessionError,
     isAuthenticated: !!user,
     isCustomer: profile?.role === 'customer',
-    isInsurer: profile?.role === 'insurer'
+    isInsurer: profile?.role === 'insurer',
+    isInitialized // ✅ Export this for components that need it
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
