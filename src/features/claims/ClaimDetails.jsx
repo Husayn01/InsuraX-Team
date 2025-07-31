@@ -5,7 +5,9 @@ import {
   XCircle, AlertCircle, ChevronRight, Calendar, DollarSign,
   MapPin, User, Paperclip, Eye, ArrowLeft, Send, Plus,
   Shield, Activity, Brain, Sparkles, Upload, Image,
-  File, Star, TrendingUp, Zap, MoreVertical, Phone
+  File, Star, TrendingUp, Zap, MoreVertical, Phone,
+  AlertTriangle, Info, Archive, Hash, Mail, ChevronDown,
+  ChevronUp, Trash2, FileImage, Loader2
 } from 'lucide-react'
 import { useAuth } from '@contexts/AuthContext'
 import { supabaseHelpers } from '@services/supabase'
@@ -14,6 +16,9 @@ import {
   Button, Card, CardBody, Badge, LoadingSpinner, 
   Modal, Input, Alert 
 } from '@shared/components'
+import {
+  FormTextArea, FormInput, FormSelect
+} from '@shared/components/FormComponents'
 import { format } from 'date-fns'
 
 export const ClaimDetails = () => {
@@ -22,12 +27,21 @@ export const ClaimDetails = () => {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [claim, setClaim] = useState(null)
-  const [showMessageModal, setShowMessageModal] = useState(false)
-  const [showDocumentModal, setShowDocumentModal] = useState(false)
-  const [message, setMessage] = useState('')
-  const [sendingMessage, setSendingMessage] = useState(false)
-  const [uploadingDoc, setUploadingDoc] = useState(false)
-  const [activeTab, setActiveTab] = useState('timeline')
+  const [error, setError] = useState(null)
+  const [success, setSuccess] = useState(null)
+  const [showDisputeModal, setShowDisputeModal] = useState(false)
+  const [showInfoResponseModal, setShowInfoResponseModal] = useState(false)
+  const [disputeReason, setDisputeReason] = useState('')
+  const [disputeEvidence, setDisputeEvidence] = useState('')
+  const [submittingDispute, setSubmittingDispute] = useState(false)
+  const [infoResponse, setInfoResponse] = useState('')
+  const [submittingInfo, setSubmittingInfo] = useState(false)
+  const [expandedSections, setExpandedSections] = useState({
+    details: true,
+    documents: true,
+    timeline: true,
+    payment: true
+  })
 
   useEffect(() => {
     fetchClaimDetails()
@@ -36,172 +50,271 @@ export const ClaimDetails = () => {
   const fetchClaimDetails = async () => {
     try {
       setLoading(true)
-      // In a real app, you'd fetch the specific claim
-      // For demo, we'll create mock detailed data
-      const mockClaim = {
-        id: id,
-        status: 'processing',
-        created_at: new Date(Date.now() - 86400000 * 3).toISOString(),
-        updated_at: new Date(Date.now() - 86400000).toISOString(),
-        claim_data: {
-          claimNumber: `CLM-2024-${id.slice(0, 6).toUpperCase()}`,
-          claimType: 'auto',
-          claimantName: 'Ibrahim Sani',
-          incidentDate: new Date(Date.now() - 86400000 * 5).toISOString(),
-          incidentLocation: '123 Adeola Odeku Street, Victoria Island, Lagos, Nigeria',
-          damageDescription: 'Rear-end collision at traffic light. Significant damage to rear bumper and trunk. No injuries reported.',
-          estimatedAmount: 250000,
-          aiProcessingStatus: 'completed',
-          fraudScore: 0.15,
-          priority: 'normal'
-        },
-        documents: ['doc1.pdf', 'image1.jpg', 'image2.jpg'],
-        timeline: [
-          {
-            id: '1',
-            status: 'completed',
-            title: 'Claim Submitted',
-            description: 'Claim successfully submitted and received',
-            date: new Date(Date.now() - 86400000 * 3).toISOString()
-          },
-          {
-            id: '2',
-            status: 'completed',
-            title: 'AI Analysis Complete',
-            description: 'NeuroClaim AI has analyzed your claim',
-            date: new Date(Date.now() - 86400000 * 2.5).toISOString()
-          },
-          {
-            id: '3',
-            status: 'active',
-            title: 'Under Review',
-            description: 'Claim is being reviewed by our adjusters',
-            date: new Date(Date.now() - 86400000 * 2).toISOString()
-          },
-          {
-            id: '4',
-            status: 'pending',
-            title: 'Awaiting Approval',
-            description: 'Final approval pending',
-            date: null
-          }
-        ],
-        messages: [
-          {
-            id: '1',
-            sender: 'system',
-            message: 'Your claim has been received and is being processed.',
-            date: new Date(Date.now() - 86400000 * 3).toISOString()
-          },
-          {
-            id: '2',
-            sender: 'adjuster',
-            name: 'John Doe',
-            message: 'We have reviewed your claim. Please provide additional photos of the damage.',
-            date: new Date(Date.now() - 86400000 * 1).toISOString()
-          }
-        ]
-      }
+      const { data, error } = await supabaseHelpers.getClaim(id)
       
-      setClaim(mockClaim)
-    } catch (error) {
-      console.error('Error fetching claim details:', error)
+      if (error) {
+        setError('Failed to load claim details')
+        return
+      }
+
+      // Verify this claim belongs to the user
+      if (data?.customer_id !== user?.id) {
+        setError('Unauthorized access')
+        navigate('/customer/claims')
+        return
+      }
+
+      setClaim(data)
+    } catch (err) {
+      console.error('Error fetching claim:', err)
+      setError('Failed to load claim details')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleSendMessage = async () => {
-    if (!message.trim()) return
-    
-    setSendingMessage(true)
+  const handleDispute = async () => {
+    if (!disputeReason.trim()) {
+      setError('Please provide a reason for your dispute')
+      return
+    }
+
+    setSubmittingDispute(true)
+    setError(null)
+
     try {
-      // In a real app, send message via API
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      setMessage('')
-      setShowMessageModal(false)
-      alert('Message sent successfully!')
-    } catch (error) {
-      console.error('Error sending message:', error)
+      // Update claim status to disputed
+      const { data, error } = await supabaseHelpers.updateClaimStatus(
+        claim.id,
+        'disputed',
+        {
+          claim_data: {
+            ...claim.claim_data,
+            dispute: {
+              reason: disputeReason,
+              evidence: disputeEvidence,
+              submitted_at: new Date().toISOString(),
+              submitted_by: user.id
+            }
+          }
+        }
+      )
+
+      if (error) throw error
+
+      // Create notification
+      await supabaseHelpers.createNotification({
+        user_id: user.id,
+        type: 'claim_update',
+        title: 'Dispute Submitted',
+        message: `Your dispute for claim ${claim.claim_data.claimNumber} has been submitted for review.`,
+        data: { 
+          claimId: claim.id,
+          status: 'disputed' 
+        }
+      })
+
+      setSuccess('Dispute submitted successfully. We will review and get back to you.')
+      setShowDisputeModal(false)
+      fetchClaimDetails() // Refresh claim data
+
+    } catch (err) {
+      console.error('Dispute submission error:', err)
+      setError(err.message || 'Failed to submit dispute')
     } finally {
-      setSendingMessage(false)
+      setSubmittingDispute(false)
     }
   }
 
-  const handleDocumentUpload = async (e) => {
-    const file = e.target.files[0]
-    if (!file) return
-    
-    setUploadingDoc(true)
+  const handleInfoResponse = async () => {
+    if (!infoResponse.trim()) {
+      setError('Please provide the requested information')
+      return
+    }
+
+    setSubmittingInfo(true)
+    setError(null)
+
     try {
-      // In a real app, upload to storage
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      alert('Document uploaded successfully!')
-      setShowDocumentModal(false)
-    } catch (error) {
-      console.error('Error uploading document:', error)
+      // Update claim with additional info
+      const { data, error } = await supabaseHelpers.updateClaim(claim.id, {
+        claim_data: {
+          ...claim.claim_data,
+          additional_info: {
+            ...claim.claim_data.additional_info,
+            [new Date().toISOString()]: {
+              response: infoResponse,
+              submitted_by: user.id
+            }
+          }
+        },
+        status: 'processing' // Move back to processing after info provided
+      })
+
+      if (error) throw error
+
+      setSuccess('Information submitted successfully.')
+      setShowInfoResponseModal(false)
+      fetchClaimDetails()
+
+    } catch (err) {
+      console.error('Info submission error:', err)
+      setError(err.message || 'Failed to submit information')
     } finally {
-      setUploadingDoc(false)
+      setSubmittingInfo(false)
     }
   }
 
-  const getStatusBadge = (status) => {
-    const config = {
-      submitted: { 
-        color: 'bg-blue-500/20 text-blue-400 border-blue-500/30', 
-        icon: Clock, 
-        text: 'Submitted',
-        pulse: false 
-      },
-      processing: { 
-        color: 'bg-amber-500/20 text-amber-400 border-amber-500/30', 
-        icon: Activity, 
-        text: 'Processing',
-        pulse: true 
-      },
-      approved: { 
-        color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30', 
-        icon: CheckCircle, 
-        text: 'Approved',
-        pulse: false 
-      },
-      rejected: { 
-        color: 'bg-red-500/20 text-red-400 border-red-500/30', 
-        icon: XCircle, 
-        text: 'Rejected',
-        pulse: false 
-      }
-    }
-    
-    const { color, icon: Icon, text, pulse } = config[status] || config.submitted
-    
-    return (
-      <Badge className={`${color} border backdrop-blur-sm ${pulse ? 'animate-pulse' : ''}`}>
-        <Icon className="w-3.5 h-3.5 mr-1.5" />
-        {text}
-      </Badge>
-    )
+  const downloadReceipt = () => {
+    // In production, generate PDF receipt
+    alert('Receipt download will be implemented soon')
   }
 
-  const getTimelineIcon = (status) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle className="w-5 h-5 text-emerald-400" />
-      case 'active':
-        return <Activity className="w-5 h-5 text-amber-400 animate-pulse" />
-      case 'pending':
-        return <Clock className="w-5 h-5 text-gray-400" />
-      default:
-        return <Clock className="w-5 h-5 text-gray-400" />
+  const getStatusColor = (status) => {
+    const colors = {
+      submitted: 'blue',
+      processing: 'cyan',
+      under_review: 'purple',
+      additional_info_required: 'amber',
+      approved: 'emerald',
+      rejected: 'red',
+      disputed: 'orange',
+      settled: 'green',
+      closed: 'gray'
     }
+    return colors[status] || 'gray'
   }
 
-  const getFileIcon = (filename) => {
-    const ext = filename.split('.').pop().toLowerCase()
+  const getFileIcon = (fileName) => {
+    if (!fileName) return <File className="w-5 h-5 text-gray-400" />
+    const ext = fileName.split('.').pop().toLowerCase()
     if (['jpg', 'jpeg', 'png', 'gif'].includes(ext)) {
       return <Image className="w-5 h-5 text-purple-400" />
     }
     return <File className="w-5 h-5 text-blue-400" />
+  }
+
+  const toggleSection = (section) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }))
+  }
+
+  const renderClaimStatus = () => {
+    const statusConfig = {
+      submitted: { color: 'blue', icon: Clock, text: 'Submitted' },
+      processing: { color: 'cyan', icon: Activity, text: 'Processing' },
+      under_review: { color: 'purple', icon: Eye, text: 'Under Review' },
+      additional_info_required: { color: 'amber', icon: Info, text: 'Info Required' },
+      approved: { color: 'emerald', icon: CheckCircle, text: 'Approved' },
+      rejected: { color: 'red', icon: XCircle, text: 'Rejected' },
+      disputed: { color: 'orange', icon: AlertTriangle, text: 'Disputed' },
+      settled: { color: 'green', icon: DollarSign, text: 'Settled' },
+      closed: { color: 'gray', icon: Archive, text: 'Closed' }
+    }
+
+    const config = statusConfig[claim?.status] || statusConfig.submitted
+    const StatusIcon = config.icon
+
+    return (
+      <div className="mb-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`p-3 bg-${config.color}-500/20 rounded-xl`}>
+              <StatusIcon className={`w-6 h-6 text-${config.color}-400`} />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-white">
+                Claim Status: {config.text}
+              </h3>
+              <p className="text-sm text-gray-400">
+                Last updated: {format(new Date(claim.updated_at), 'MMM d, yyyy h:mm a')}
+              </p>
+            </div>
+          </div>
+          
+          {/* Action buttons based on status */}
+          <div className="flex gap-2">
+            {claim?.status === 'additional_info_required' && (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setShowInfoResponseModal(true)}
+                className="bg-gradient-to-r from-amber-500 to-orange-600"
+              >
+                <MessageSquare className="w-4 h-4 mr-1" />
+                Provide Information
+              </Button>
+            )}
+            
+            {claim?.status === 'rejected' && (
+              <Button
+                variant="secondary"
+                onClick={() => setShowDisputeModal(true)}
+                className="hover:bg-amber-500/20 hover:text-amber-400 hover:border-amber-500/50"
+              >
+                <AlertTriangle className="w-4 h-4 mr-2" />
+                Dispute Decision
+              </Button>
+            )}
+            
+            {claim?.status === 'approved' && !claim?.claim_data?.payment_id && (
+              <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 animate-pulse">
+                Payment Processing
+              </Badge>
+            )}
+            
+            {claim?.status === 'settled' && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => downloadReceipt()}
+              >
+                <Download className="w-4 h-4 mr-1" />
+                Download Receipt
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Additional status-specific information */}
+        {claim?.status === 'additional_info_required' && claim?.info_request && (
+          <Alert type="warning" className="mt-4">
+            <AlertCircle className="w-4 h-4 mr-2" />
+            <div>
+              <p className="font-medium">Information Required:</p>
+              <p className="text-sm mt-1">{claim.info_request}</p>
+            </div>
+          </Alert>
+        )}
+
+        {claim?.status === 'rejected' && claim?.rejection_reason && (
+          <Alert type="error" className="mt-4">
+            <XCircle className="w-4 h-4 mr-2" />
+            <div>
+              <p className="font-medium">Rejection Reason:</p>
+              <p className="text-sm mt-1">{claim.rejection_reason}</p>
+              {claim?.rejection_comment && (
+                <p className="text-sm mt-2 text-gray-400">{claim.rejection_comment}</p>
+              )}
+            </div>
+          </Alert>
+        )}
+
+        {claim?.status === 'disputed' && claim?.claim_data?.dispute && (
+          <Alert type="info" className="mt-4">
+            <AlertTriangle className="w-4 h-4 mr-2" />
+            <div>
+              <p className="font-medium">Dispute Under Review</p>
+              <p className="text-sm mt-1">
+                Submitted on {format(new Date(claim.claim_data.dispute.submitted_at), 'MMM d, yyyy')}
+              </p>
+            </div>
+          </Alert>
+        )}
+      </div>
+    )
   }
 
   if (loading) {
@@ -248,465 +361,399 @@ export const ClaimDetails = () => {
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -left-40 w-80 h-80 bg-cyan-500/30 rounded-full blur-[128px] animate-float"></div>
         <div className="absolute -bottom-40 -right-40 w-80 h-80 bg-purple-500/30 rounded-full blur-[128px] animate-float animation-delay-2000"></div>
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-blue-500/20 rounded-full blur-[128px] animate-float animation-delay-4000"></div>
       </div>
 
       <PageHeader
         title={
-          <span className="bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
-            {claim.claim_data.claimNumber}
-          </span>
-        }
-        description="View and manage your insurance claim"
-        actions={
-          <div className="flex gap-3">
+          <div className="flex items-center gap-3">
             <Link to="/customer/claims">
-              <Button variant="ghost" className="hover:bg-gray-700">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back
+              <Button variant="ghost" size="sm">
+                <ArrowLeft className="w-4 h-4" />
               </Button>
             </Link>
-            <Button variant="secondary" className="hover:bg-cyan-500/20 hover:text-cyan-400 hover:border-cyan-500/50">
-              <Download className="w-4 h-4 mr-2" />
-              Download Report
-            </Button>
+            <span>Claim Details</span>
           </div>
         }
+        description={`Claim #${claim?.claim_data?.claimNumber || 'Loading...'}`}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Claim Overview Card */}
-          <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50 hover:shadow-xl transition-shadow duration-300">
-            <div className="px-6 py-5 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/50 to-gray-800/30">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-cyan-500/20 rounded-lg">
-                    <FileText className="w-5 h-5 text-cyan-400" />
-                  </div>
-                  <h2 className="text-xl font-semibold text-white">Claim Overview</h2>
-                </div>
-                {getStatusBadge(claim.status)}
-              </div>
-            </div>
-            <CardBody className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-sm text-gray-400 mb-1">Claim Type</p>
-                    <p className="font-medium text-gray-100 capitalize flex items-center gap-2">
-                      <Shield className="w-4 h-4 text-cyan-400" />
-                      {claim.claim_data.claimType} Insurance
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-400 mb-1">Incident Date</p>
-                    <p className="font-medium text-gray-100 flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-gray-400" />
-                      {format(new Date(claim.claim_data.incidentDate), 'MMMM d, yyyy')}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-400 mb-1">Incident Location</p>
-                    <p className="font-medium text-gray-100 flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-gray-400" />
-                      {claim.claim_data.incidentLocation.split(',')[0]}
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-sm text-gray-400 mb-1">Estimated Amount</p>
-                    <p className="text-2xl font-bold text-white flex items-center gap-2">
-                      <DollarSign className="w-5 h-5 text-emerald-400" />
-                      {new Intl.NumberFormat('en-NG', {
-                        style: 'currency',
-                        currency: 'NGN'
-                      }).format(claim.claim_data.estimatedAmount)}
-                    </p>
-                  </div>
-                  {claim.claim_data.aiProcessingStatus === 'completed' && (
-                    <div className="p-4 bg-purple-500/10 border border-purple-500/30 rounded-xl">
-                      <div className="flex items-center gap-3">
-                        <Brain className="w-5 h-5 text-purple-400" />
-                        <div>
-                          <p className="text-sm font-medium text-purple-400">AI Analysis Complete</p>
-                          <p className="text-xs text-purple-400/80">Fraud Risk: Low ({(claim.claim_data.fraudScore * 100).toFixed(0)}%)</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-              
+      {error && (
+        <Alert type="error" className="mb-6" onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      )}
+
+      {success && (
+        <Alert type="success" className="mb-6" onClose={() => setSuccess(null)}>
+          {success}
+        </Alert>
+      )}
+
+      {/* Status Display */}
+      {renderClaimStatus()}
+
+      {/* Claim Details */}
+      <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50 mb-6">
+        <CardBody>
+          <div 
+            className="flex items-center justify-between cursor-pointer"
+            onClick={() => toggleSection('details')}
+          >
+            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+              <FileText className="w-5 h-5 text-cyan-400" />
+              Claim Information
+            </h3>
+            {expandedSections.details ? <ChevronUp /> : <ChevronDown />}
+          </div>
+          
+          {expandedSections.details && (
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <p className="text-sm text-gray-400 mb-2">Damage Description</p>
-                <p className="text-gray-300 bg-gray-700/30 p-4 rounded-lg">
-                  {claim.claim_data.damageDescription}
+                <p className="text-sm text-gray-400 mb-1">Claim Number</p>
+                <p className="text-white font-medium flex items-center gap-2">
+                  <Hash className="w-4 h-4 text-gray-400" />
+                  {claim.claim_data?.claimNumber}
                 </p>
               </div>
-            </CardBody>
-          </Card>
-
-          {/* Tabs for Timeline/Messages/Documents */}
-          <div className="mb-4">
-            <div className="flex space-x-1 p-1 bg-gray-800/50 backdrop-blur-sm rounded-xl">
-              {[
-                { id: 'timeline', label: 'Timeline', icon: Clock },
-                { id: 'messages', label: 'Messages', icon: MessageSquare },
-                { id: 'documents', label: 'Documents', icon: Paperclip }
-              ].map((tab) => {
-                const Icon = tab.icon
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
-                      activeTab === tab.id
-                        ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg'
-                        : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4" />
-                    <span>{tab.label}</span>
-                  </button>
-                )
-              })}
+              <div>
+                <p className="text-sm text-gray-400 mb-1">Claim Type</p>
+                <Badge className="bg-cyan-500/20 text-cyan-400 border-cyan-500/30">
+                  {claim.claim_data?.claimType}
+                </Badge>
+              </div>
+              <div>
+                <p className="text-sm text-gray-400 mb-1">Date of Incident</p>
+                <p className="text-white font-medium flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-gray-400" />
+                  {format(new Date(claim.claim_data?.dateOfIncident), 'MMM d, yyyy')}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-400 mb-1">Estimated Amount</p>
+                <p className="text-white font-medium flex items-center gap-2">
+                  <DollarSign className="w-4 h-4 text-gray-400" />
+                  ₦{claim.claim_data?.estimatedAmount?.toLocaleString()}
+                </p>
+              </div>
+              <div className="md:col-span-2">
+                <p className="text-sm text-gray-400 mb-1">Location</p>
+                <p className="text-white font-medium flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-gray-400" />
+                  {claim.claim_data?.location}
+                </p>
+              </div>
+              <div className="md:col-span-2">
+                <p className="text-sm text-gray-400 mb-1">Description</p>
+                <p className="text-white">{claim.claim_data?.description}</p>
+              </div>
             </div>
+          )}
+        </CardBody>
+      </Card>
+
+      {/* AI Analysis (if available) */}
+      {claim.claim_data?.aiAnalysis && (
+        <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50 mb-6">
+          <CardBody>
+            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              <Brain className="w-5 h-5 text-purple-400" />
+              AI Analysis
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 bg-gray-900/50 rounded-lg">
+                <p className="text-sm text-gray-400 mb-1">Risk Level</p>
+                <Badge className={`
+                  ${claim.claim_data.aiAnalysis.fraudAssessment?.riskLevel === 'high' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
+                    claim.claim_data.aiAnalysis.fraudAssessment?.riskLevel === 'medium' ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' :
+                    'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'}
+                `}>
+                  {claim.claim_data.aiAnalysis.fraudAssessment?.riskLevel || 'Low'}
+                </Badge>
+              </div>
+              <div className="p-4 bg-gray-900/50 rounded-lg">
+                <p className="text-sm text-gray-400 mb-1">Risk Score</p>
+                <p className="text-xl font-bold text-white">{claim.claim_data.aiAnalysis.fraudAssessment?.riskScore || 0}%</p>
+              </div>
+              <div className="p-4 bg-gray-900/50 rounded-lg">
+                <p className="text-sm text-gray-400 mb-1">Priority</p>
+                <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">
+                  {claim.claim_data.aiAnalysis.categorization?.priority?.level || 'Normal'}
+                </Badge>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
+      {/* Documents */}
+      <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50 mb-6">
+        <CardBody>
+          <div 
+            className="flex items-center justify-between cursor-pointer"
+            onClick={() => toggleSection('documents')}
+          >
+            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+              <Paperclip className="w-5 h-5 text-purple-400" />
+              Documents ({claim.claim_data?.documents?.length || 0})
+            </h3>
+            {expandedSections.documents ? <ChevronUp /> : <ChevronDown />}
           </div>
-
-          {/* Timeline Tab */}
-          {activeTab === 'timeline' && (
-            <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50">
-              <div className="px-6 py-5 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/50 to-gray-800/30">
-                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-cyan-400" />
-                  Claim Timeline
-                </h3>
-              </div>
-              <CardBody>
-                <div className="relative">
-                  {claim.timeline.map((event, index) => (
-                    <div key={event.id} className="flex items-start mb-8 last:mb-0">
-                      <div className="relative flex-shrink-0">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                          event.status === 'completed' ? 'bg-emerald-500/20' :
-                          event.status === 'active' ? 'bg-amber-500/20' :
-                          'bg-gray-700/50'
-                        }`}>
-                          {getTimelineIcon(event.status)}
-                        </div>
-                        {index < claim.timeline.length - 1 && (
-                          <div className={`absolute top-10 left-5 w-0.5 h-16 ${
-                            event.status === 'completed' ? 'bg-emerald-500/50' : 'bg-gray-700'
-                          }`} />
-                        )}
-                      </div>
-                      <div className="ml-4 flex-1">
-                        <h4 className={`font-medium ${
-                          event.status === 'completed' ? 'text-gray-100' :
-                          event.status === 'active' ? 'text-amber-400' :
-                          'text-gray-400'
-                        }`}>
-                          {event.title}
-                        </h4>
-                        <p className="text-sm text-gray-400 mt-1">{event.description}</p>
-                        {event.date && (
-                          <p className="text-xs text-gray-500 mt-2">
-                            {format(new Date(event.date), 'MMM d, yyyy h:mm a')}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardBody>
-            </Card>
-          )}
-
-          {/* Messages Tab */}
-          {activeTab === 'messages' && (
-            <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50">
-              <div className="px-6 py-5 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/50 to-gray-800/30">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                    <MessageSquare className="w-5 h-5 text-purple-400" />
-                    Messages
-                  </h3>
-                  <Button 
-                    size="sm"
-                    onClick={() => setShowMessageModal(true)}
-                    className="bg-gradient-to-r from-purple-500 to-pink-600"
-                  >
-                    <Plus className="w-4 h-4 mr-1" />
-                    New Message
-                  </Button>
-                </div>
-              </div>
-              <CardBody>
-                <div className="space-y-4">
-                  {claim.messages.map((msg) => (
-                    <div 
-                      key={msg.id} 
-                      className={`p-4 rounded-xl ${
-                        msg.sender === 'system' 
-                          ? 'bg-blue-500/10 border border-blue-500/30' 
-                          : 'bg-gray-700/30 hover:bg-gray-700/50 transition-colors'
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                          msg.sender === 'system' 
-                            ? 'bg-blue-500/20' 
-                            : 'bg-gradient-to-r from-cyan-500 to-blue-600'
-                        }`}>
-                          {msg.sender === 'system' ? (
-                            <Sparkles className="w-5 h-5 text-blue-400" />
-                          ) : (
-                            <span className="text-white font-medium">
-                              {msg.name?.charAt(0) || 'A'}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <p className="font-medium text-gray-100">
-                              {msg.sender === 'system' ? 'System' : msg.name || 'Adjuster'}
-                            </p>
-                            <span className="text-xs text-gray-500">
-                              {format(new Date(msg.date), 'MMM d, h:mm a')}
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-300">{msg.message}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardBody>
-            </Card>
-          )}
-
-          {/* Documents Tab */}
-          {activeTab === 'documents' && (
-            <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50">
-              <div className="px-6 py-5 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/50 to-gray-800/30">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                    <Paperclip className="w-5 h-5 text-emerald-400" />
-                    Documents
-                  </h3>
-                  <Button 
-                    size="sm"
-                    onClick={() => setShowDocumentModal(true)}
-                    className="bg-gradient-to-r from-emerald-500 to-green-600"
-                  >
-                    <Upload className="w-4 h-4 mr-1" />
-                    Upload
-                  </Button>
-                </div>
-              </div>
-              <CardBody>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {claim.documents.map((doc, index) => (
-                    <div 
-                      key={index}
-                      className="p-4 bg-gray-700/30 rounded-xl hover:bg-gray-700/50 transition-all duration-300 group cursor-pointer"
-                    >
+          
+          {expandedSections.documents && (
+            <div className="mt-6">
+              {claim.claim_data?.documents && claim.claim_data.documents.length > 0 ? (
+                <div className="space-y-3">
+                  {claim.claim_data.documents.map((doc, index) => (
+                    <div key={index} className="flex items-center justify-between p-4 bg-gray-900/50 rounded-lg hover:bg-gray-900/70 transition-colors">
                       <div className="flex items-center gap-3">
-                        <div className="p-3 bg-gray-700/50 rounded-lg group-hover:scale-110 transition-transform">
-                          {getFileIcon(doc)}
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-medium text-gray-100 group-hover:text-cyan-400 transition-colors">
-                            {doc}
+                        {getFileIcon(doc.fileName)}
+                        <div>
+                          <p className="text-white font-medium">{doc.fileName}</p>
+                          <p className="text-sm text-gray-400">
+                            {(doc.fileSize / 1024).toFixed(1)} KB
                           </p>
-                          <p className="text-xs text-gray-400">Uploaded on submission</p>
                         </div>
-                        <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Eye className="w-4 h-4" />
-                        </Button>
                       </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => window.open(doc.url, '_blank')}
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Button>
                     </div>
                   ))}
                 </div>
-              </CardBody>
-            </Card>
-          )}
-        </div>
-
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Status Card */}
-          <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50 hover:shadow-xl transition-shadow duration-300">
-            <div className="px-6 py-5 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/50 to-gray-800/30">
-              <h3 className="text-lg font-semibold text-white">Status Summary</h3>
+              ) : (
+                <p className="text-gray-400 text-center py-4">No documents uploaded</p>
+              )}
             </div>
-            <CardBody className="space-y-4">
-              <div className="text-center p-6 bg-gradient-to-br from-amber-500/10 to-orange-600/10 rounded-xl">
-                <Activity className="w-12 h-12 text-amber-400 mx-auto mb-3" />
-                <p className="text-lg font-semibold text-white mb-1">Under Review</p>
-                <p className="text-sm text-gray-400">Estimated completion in 2-3 days</p>
-              </div>
-              
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-gray-700/30 rounded-lg">
-                  <span className="text-sm text-gray-400">Submitted</span>
-                  <span className="text-sm font-medium text-gray-300">
-                    {format(new Date(claim.created_at), 'MMM d, yyyy')}
-                  </span>
+          )}
+        </CardBody>
+      </Card>
+
+      {/* Timeline */}
+      <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50 mb-6">
+        <CardBody>
+          <div 
+            className="flex items-center justify-between cursor-pointer"
+            onClick={() => toggleSection('timeline')}
+          >
+            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+              <Activity className="w-5 h-5 text-emerald-400" />
+              Activity Timeline
+            </h3>
+            {expandedSections.timeline ? <ChevronUp /> : <ChevronDown />}
+          </div>
+          
+          {expandedSections.timeline && (
+            <div className="mt-6 space-y-4">
+              {claim.claim_data?.audit_trail && claim.claim_data.audit_trail.length > 0 ? (
+                [...claim.claim_data.audit_trail].reverse().map((entry, index) => (
+                  <div key={index} className="flex gap-4">
+                    <div className="flex-shrink-0">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        entry.action === 'claim_created' ? 'bg-blue-500/20 text-blue-400' :
+                        entry.action === 'status_changed' ? 'bg-purple-500/20 text-purple-400' :
+                        'bg-gray-700 text-gray-400'
+                      }`}>
+                        <Activity className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-white font-medium">
+                        {entry.action === 'claim_created' ? 'Claim Submitted' :
+                         entry.action === 'status_changed' ? `Status changed to ${entry.details?.to_status}` :
+                         entry.action}
+                      </p>
+                      <p className="text-sm text-gray-400">
+                        {format(new Date(entry.timestamp), 'MMM d, yyyy h:mm a')}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-4">
+                  <Clock className="w-8 h-8 text-gray-500 mx-auto mb-2" />
+                  <p className="text-gray-400">No activity recorded</p>
                 </div>
-                <div className="flex items-center justify-between p-3 bg-gray-700/30 rounded-lg">
-                  <span className="text-sm text-gray-400">Last Updated</span>
-                  <span className="text-sm font-medium text-gray-300">
-                    {format(new Date(claim.updated_at), 'MMM d, yyyy')}
-                  </span>
+              )}
+            </div>
+          )}
+        </CardBody>
+      </Card>
+
+      {/* Payment Information (if approved) */}
+      {claim?.status === 'approved' && claim?.claim_data?.payment_id && (
+        <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50">
+          <CardBody>
+            <div 
+              className="flex items-center justify-between cursor-pointer"
+              onClick={() => toggleSection('payment')}
+            >
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-emerald-400" />
+                Payment Information
+              </h3>
+              {expandedSections.payment ? <ChevronUp /> : <ChevronDown />}
+            </div>
+            
+            {expandedSections.payment && (
+              <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <p className="text-sm text-gray-400 mb-1">Settlement Amount</p>
+                  <p className="text-2xl font-bold text-emerald-400">
+                    ₦{claim.claim_data.settlement_amount?.toLocaleString()}
+                  </p>
                 </div>
-                <div className="flex items-center justify-between p-3 bg-gray-700/30 rounded-lg">
-                  <span className="text-sm text-gray-400">Priority</span>
-                  <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 border">
-                    Normal
+                <div>
+                  <p className="text-sm text-gray-400 mb-1">Deductible</p>
+                  <p className="text-lg font-medium text-white">
+                    ₦{claim.claim_data.deductible?.toLocaleString()}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-400 mb-1">Payment Method</p>
+                  <p className="text-white font-medium capitalize">
+                    {claim.claim_data.payment_method?.replace('_', ' ')}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-400 mb-1">Payment Status</p>
+                  <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">
+                    Processing
                   </Badge>
                 </div>
               </div>
-            </CardBody>
-          </Card>
-
-          {/* Quick Actions */}
-          <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50 hover:shadow-xl transition-shadow duration-300">
-            <div className="px-6 py-5 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/50 to-gray-800/30">
-              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                <Zap className="w-5 h-5 text-yellow-400" />
-                Quick Actions
-              </h3>
-            </div>
-            <CardBody className="space-y-3">
-              <Button 
-                variant="secondary" 
-                className="w-full justify-start hover:bg-cyan-500/20 hover:text-cyan-400 hover:border-cyan-500/50"
-                onClick={() => setShowMessageModal(true)}
-              >
-                <MessageSquare className="w-4 h-4 mr-2" />
-                Send Message
-              </Button>
-              <Button 
-                variant="secondary" 
-                className="w-full justify-start hover:bg-emerald-500/20 hover:text-emerald-400 hover:border-emerald-500/50"
-                onClick={() => setShowDocumentModal(true)}
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                Upload Document
-              </Button>
-              <Button 
-                variant="secondary" 
-                className="w-full justify-start hover:bg-purple-500/20 hover:text-purple-400 hover:border-purple-500/50"
-              >
-                <Phone className="w-4 h-4 mr-2" />
-                Call Support
-              </Button>
-            </CardBody>
-          </Card>
-
-          {/* Help Card */}
-          <Card className="bg-gradient-to-br from-cyan-500/10 to-blue-600/10 border-cyan-500/30 hover:shadow-xl transition-shadow duration-300">
-            <CardBody className="text-center">
-              <Shield className="w-10 h-10 text-cyan-400 mx-auto mb-3" />
-              <h4 className="font-medium text-white mb-2">Need Help?</h4>
-              <p className="text-sm text-gray-400 mb-4">
-                Our support team is available 24/7 to assist you.
-              </p>
-              <Button size="sm" className="bg-gradient-to-r from-cyan-500 to-blue-600">
-                Contact Support
-              </Button>
-            </CardBody>
-          </Card>
-        </div>
-      </div>
-
-      {/* Message Modal */}
-      {showMessageModal && (
-        <Modal
-          isOpen={showMessageModal}
-          onClose={() => setShowMessageModal(false)}
-          title="Send Message"
-        >
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Your Message
-              </label>
-              <textarea
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                rows={4}
-                className="w-full px-3 py-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-                placeholder="Type your message here..."
-              />
-            </div>
-            <div className="flex gap-3">
-              <Button
-                variant="secondary"
-                onClick={() => setShowMessageModal(false)}
-                disabled={sendingMessage}
-                className="flex-1"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSendMessage}
-                loading={sendingMessage}
-                disabled={sendingMessage || !message.trim()}
-                className="flex-1 bg-gradient-to-r from-purple-500 to-pink-600"
-              >
-                Send Message
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* Document Upload Modal */}
-      {showDocumentModal && (
-        <Modal
-          isOpen={showDocumentModal}
-          onClose={() => setShowDocumentModal(false)}
-          title="Upload Document"
-        >
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Select File
-              </label>
-              <div className="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center hover:border-cyan-500 transition-colors">
-                <input
-                  type="file"
-                  id="doc-upload"
-                  onChange={handleDocumentUpload}
-                  className="hidden"
-                  accept="image/*,.pdf,.doc,.docx"
-                />
-                <label htmlFor="doc-upload" className="cursor-pointer">
-                  <Upload className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                  <p className="text-gray-300 font-medium mb-1">
-                    Click to upload
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    Images, PDFs, Word docs (max 10MB)
-                  </p>
-                </label>
-              </div>
-            </div>
-            {uploadingDoc && (
-              <div className="flex items-center justify-center gap-3 text-cyan-400">
-                <div className="animate-spin rounded-full h-5 w-5 border-2 border-cyan-400 border-t-transparent"></div>
-                <span>Uploading...</span>
-              </div>
             )}
-          </div>
-        </Modal>
+          </CardBody>
+        </Card>
       )}
+
+      {/* Dispute Modal */}
+      <Modal
+        isOpen={showDisputeModal}
+        onClose={() => setShowDisputeModal(false)}
+        title="Dispute Claim Decision"
+        size="md"
+      >
+        <div className="space-y-4">
+          <Alert type="info">
+            <Info className="w-4 h-4 mr-2" />
+            Please provide detailed information to support your dispute. Our team will review and respond within 2-3 business days.
+          </Alert>
+
+          {claim?.rejection_reason && (
+            <div className="bg-red-900/20 border border-red-500/50 rounded-lg p-4">
+              <h4 className="text-sm font-medium text-red-400 mb-2">Rejection Reason</h4>
+              <p className="text-sm text-gray-300">{claim.rejection_reason}</p>
+              {claim?.rejection_comment && (
+                <p className="text-sm text-gray-400 mt-2">{claim.rejection_comment}</p>
+              )}
+            </div>
+          )}
+
+          <FormTextArea
+            label="Reason for Dispute"
+            value={disputeReason}
+            onChange={(e) => setDisputeReason(e.target.value)}
+            placeholder="Explain why you believe this decision should be reconsidered..."
+            rows={4}
+            required
+            error={error && !disputeReason ? 'This field is required' : null}
+          />
+
+          <FormTextArea
+            label="Additional Evidence or Information (Optional)"
+            value={disputeEvidence}
+            onChange={(e) => setDisputeEvidence(e.target.value)}
+            placeholder="Provide any additional information that supports your case..."
+            rows={3}
+          />
+
+          <div className="flex gap-3 justify-end pt-4">
+            <Button 
+              variant="secondary" 
+              onClick={() => setShowDisputeModal(false)}
+              disabled={submittingDispute}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleDispute}
+              disabled={submittingDispute || !disputeReason.trim()}
+              className="bg-gradient-to-r from-amber-500 to-orange-600"
+            >
+              {submittingDispute ? (
+                <>
+                  <LoadingSpinner size="sm" className="mr-2" />
+                  Submitting...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4 mr-2" />
+                  Submit Dispute
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Info Response Modal */}
+      <Modal
+        isOpen={showInfoResponseModal}
+        onClose={() => setShowInfoResponseModal(false)}
+        title="Provide Additional Information"
+        size="md"
+      >
+        <div className="space-y-4">
+          {claim?.info_request && (
+            <div className="bg-amber-900/20 border border-amber-500/50 rounded-lg p-4">
+              <h4 className="text-sm font-medium text-amber-400 mb-2">Information Requested</h4>
+              <p className="text-sm text-gray-300">{claim.info_request}</p>
+            </div>
+          )}
+
+          <FormTextArea
+            label="Your Response"
+            value={infoResponse}
+            onChange={(e) => setInfoResponse(e.target.value)}
+            placeholder="Provide the requested information..."
+            rows={5}
+            required
+          />
+
+          <div className="flex gap-3 justify-end pt-4">
+            <Button 
+              variant="secondary" 
+              onClick={() => setShowInfoResponseModal(false)}
+              disabled={submittingInfo}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleInfoResponse}
+              disabled={submittingInfo || !infoResponse.trim()}
+              className="bg-gradient-to-r from-cyan-500 to-blue-600"
+            >
+              {submittingInfo ? (
+                <>
+                  <LoadingSpinner size="sm" className="mr-2" />
+                  Submitting...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4 mr-2" />
+                  Submit Information
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Add custom animations */}
       <style jsx>{`
@@ -726,12 +773,7 @@ export const ClaimDetails = () => {
         .animation-delay-2000 {
           animation-delay: 2s;
         }
-        .animation-delay-4000 {
-          animation-delay: 4s;
-        }
       `}</style>
     </DashboardLayout>
   )
 }
-
-export default ClaimDetails

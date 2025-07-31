@@ -1,4 +1,4 @@
-// services/documentProcessor.js
+// features/neuroclaim/services/DocumentProcessor.js
 import { JSONParser } from '../utils/jsonParser.js';
 
 export class DocumentProcessor {
@@ -6,111 +6,56 @@ export class DocumentProcessor {
     this.client = geminiClient;
   }
 
+  /**
+   * Extract structured claim information from document text
+   * Enhanced version that better handles various document formats
+   */
   async extractClaimInformation(documentText) {
     if (!documentText || documentText.trim().length === 0) {
       return {
         success: false,
-        error: 'Document text is empty or invalid',
-        data: null
+        error: 'No document text provided'
       };
     }
 
-    const prompt = `You must respond with ONLY valid JSON, no other text.
+   const prompt = `Extract claim information from the following document text. Return ONLY a valid JSON object with the extracted information.
 
-Extract claim information from this document:
-${documentText.substring(0, 8000)}
+Document text:
+${documentText}
 
-Required JSON structure:
+Return a JSON object with these fields (use null for missing information):
 {
-  "claimNumber": "string or null",
-  "policyNumber": "string or null",
-  "claimantName": "string or null",
-  "dateOfIncident": "YYYY-MM-DD or null",
-  "dateOfClaim": "YYYY-MM-DD or null",
-  "claimType": "auto|health|property|life|other",
-  "incidentLocation": "string or null",
-  "damageDescription": "string",
+  "claimType": "auto|health|property|general|null",
+  "dateOfIncident": "MM-DD-YYYY format or null",
+  "incidentLocation": "location string or null", 
+  "incidentDescription": "detailed description or null",
+  "claimAmount": number or null,
   "estimatedAmount": number or null,
-  "witnessInformation": "string or null",
-  "medicalTreatment": "string or null",
-  "vehicleInformation": {
+  "claimantName": "full name or null",
+  "claimantAddress": "address or null",
+  "contactPhone": "phone number or null",
+  "contactEmail": "email or null",
+  "policyNumber": "policy number or null",
+  "claimNumber": "claim number or null",
+  "vehicleInfo": {
     "make": "string or null",
     "model": "string or null",
-    "year": number or null,
-    "licensePlate": "string or null"
+    "year": "string or null",
+    "plateNumber": "string or null"
   },
-  "extractedFields": ["field1", "field2"],
-  "missingFields": ["field1", "field2"],
-  "confidence": "high|medium|low"
+  "injuries": ["list of injuries"] or [],
+  "witnesses": ["list of witness names"] or [],
+  "policeReportNumber": "report number or null",
+  "additionalInfo": "any other relevant information"
 }
 
-Start your response with { and end with }`;
-
-    try {
-      const response = await this.client.chatCompletion([
-        { 
-          role: 'system', 
-          content: 'You are a JSON-only responder. Never include any text outside of the JSON structure. Always start with { and end with }.' 
-        },
-        { role: 'user', content: prompt }
-      ], { expectJSON: true });
-
-      const extractedData = JSONParser.parseAIResponse(response.choices[0].message.content);
-      
-      // Validate the response structure
-      if (!extractedData || typeof extractedData !== 'object') {
-        throw new Error('Invalid response structure');
-      }
-
-      return {
-        success: true,
-        data: extractedData,
-        processingTime: new Date().toISOString()
-      };
-    } catch (error) {
-      console.error('Document extraction failed:', error);
-      return {
-        success: false,
-        error: `Document extraction failed: ${error.message}`,
-        data: null
-      };
-    }
-  }
-
-  async validateClaimInformation(claimData) {
-    if (!claimData || typeof claimData !== 'object') {
-      return {
-        success: false,
-        error: 'Invalid claim data provided'
-      };
-    }
-
-    const prompt = `Validate this claim data and return ONLY a valid JSON object.
-
-Required JSON format:
-{
-  "validationStatus": "valid",
-  "validationScore": 85,
-  "issues": [
-    {
-      "field": "fieldName",
-      "issue": "description",
-      "severity": "warning"
-    }
-  ],
-  "recommendations": ["recommendation 1"],
-  "requiredActions": ["action 1"],
-  "estimatedProcessingTime": "1-3 days"
-}
-
-Claim data to validate:
-${JSON.stringify(claimData, null, 2)}
-
-Rules:
-- validationStatus: valid, incomplete, or invalid
-- validationScore: 0-100
-- severity: critical, warning, or info
-- estimatedProcessingTime: immediate, 1-3 days, 3-7 days, or investigation required
+Important:
+- Extract the claim number if present (usually starts with CLM- or similar)
+- For claimType, determine based on content: auto (vehicle-related), health (medical), property (home/building), or general (other)
+- Extract dates in YYYY-MM-DD format
+- Extract monetary amounts as numbers without currency symbols (remove ₦, NGN, Naira, commas, etc.)
+- Look for amounts in fields like "Estimated Repair Cost", "claim amount", "damage estimate", etc.
+- Include all relevant information found in the document
 
 JSON output:`;
 
@@ -118,23 +63,292 @@ JSON output:`;
       const response = await this.client.chatCompletion([
         { 
           role: 'system', 
-          content: 'You are a claims validator that returns only valid JSON.'
+          content: 'You are a document analyzer that extracts structured information from insurance claim documents. Return only valid JSON.' 
         },
         { role: 'user', content: prompt }
-      ], { expectJSON: true });
+      ], { 
+        expectJSON: true,
+        temperature: 0.1 // Lower temperature for more consistent extraction
+      });
 
-      const validation = JSONParser.parseAIResponse(response.choices[0].message.content);
+      const extractedData = JSONParser.parseAIResponse(response.choices[0].message.content);
+
+      // Validate and clean the extracted data
+      const cleanedData = this.validateAndCleanExtractedData(extractedData);
 
       return {
         success: true,
-        validation: validation
+        claimData: cleanedData,
+        confidence: this.calculateExtractionConfidence(cleanedData)
       };
     } catch (error) {
-      console.error('Validation failed:', error);
+      console.error('Information extraction failed:', error);
       return {
         success: false,
-        error: `Validation failed: ${error.message}`
+        error: error.message,
+        claimData: null
       };
     }
   }
+
+  /**
+   * Validate and clean extracted data
+   */
+  validateAndCleanExtractedData(data) {
+  const cleaned = {};
+
+  // Claim type validation
+  const validClaimTypes = ['auto', 'health', 'property', 'general'];
+  cleaned.claimType = validClaimTypes.includes(data.claimType) ? data.claimType : null;
+
+  // Date validation and formatting - CHANGED FIELD NAME
+  cleaned.dateOfIncident = this.parseDate(data.dateOfIncident);
+
+  // Location cleaning
+  cleaned.incidentLocation = this.cleanString(data.incidentLocation);
+
+  // Description cleaning
+  cleaned.incidentDescription = this.cleanString(data.incidentDescription);
+
+  // Amount validation - CHANGED FIELD NAME
+  cleaned.estimatedAmount = this.parseAmount(data.estimatedAmount);
+
+  // Claim number - NEW FIELD
+  cleaned.claimNumber = this.cleanString(data.claimNumber);
+
+  // Contact information
+  cleaned.claimantName = this.cleanString(data.claimantName);
+  cleaned.claimantAddress = this.cleanString(data.claimantAddress);
+  cleaned.contactPhone = this.cleanPhone(data.contactPhone);
+  cleaned.contactEmail = this.validateEmail(data.contactEmail);
+
+  // Policy number
+  cleaned.policyNumber = this.cleanString(data.policyNumber);
+
+  // Vehicle info (for auto claims)
+  if (data.vehicleInfo && typeof data.vehicleInfo === 'object') {
+    cleaned.vehicleInfo = {
+      make: this.cleanString(data.vehicleInfo.make),
+      model: this.cleanString(data.vehicleInfo.model),
+      year: this.cleanString(data.vehicleInfo.year),
+      plateNumber: this.cleanString(data.vehicleInfo.plateNumber)
+    };
+  }
+
+  // Arrays
+  cleaned.injuries = Array.isArray(data.injuries) ? data.injuries.filter(i => i && typeof i === 'string') : [];
+  cleaned.witnesses = Array.isArray(data.witnesses) ? data.witnesses.filter(w => w && typeof w === 'string') : [];
+
+  // Other fields
+  cleaned.policeReportNumber = this.cleanString(data.policeReportNumber);
+  cleaned.additionalInfo = this.cleanString(data.additionalInfo);
+
+  return cleaned;
 }
+
+  /**
+   * Parse date string to YYYY-MM-DD format
+   */
+  parseDate(dateString) {
+    if (!dateString) return null;
+
+    try {
+      // Try to parse various date formats
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return null;
+
+      // Return in YYYY-MM-DD format
+      return date.toISOString().split('T')[0];
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Parse amount from various formats
+   */
+parseAmount(value) {
+  if (value === null || value === undefined) return null;
+  
+  if (typeof value === 'number') return value;
+  
+  if (typeof value === 'string') {
+    // Remove currency symbols (including Naira), commas, and spaces
+    const cleaned = value
+      .replace(/[₦$£€¥,\s]/g, '')
+      .replace(/NGN/gi, '') // Remove NGN text
+      .replace(/naira/gi, '') // Remove 'naira' text
+      .trim();
+    
+    const num = parseFloat(cleaned);
+    return isNaN(num) ? null : num;
+  }
+  
+  return null;
+}
+
+  /**
+   * Clean string values
+   */
+  cleanString(str) {
+    if (!str || typeof str !== 'string') return null;
+    const cleaned = str.trim();
+    return cleaned.length > 0 ? cleaned : null;
+  }
+
+  /**
+   * Clean and validate phone number
+   */
+  cleanPhone(phone) {
+    if (!phone) return null;
+    
+    // Remove non-numeric characters except + for international
+    const cleaned = phone.replace(/[^\d+]/g, '');
+    
+    // Basic validation - at least 10 digits
+    if (cleaned.replace(/\D/g, '').length < 10) return null;
+    
+    return cleaned;
+  }
+
+  /**
+   * Validate email format
+   */
+  validateEmail(email) {
+    if (!email || typeof email !== 'string') return null;
+    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email.trim()) ? email.trim().toLowerCase() : null;
+  }
+
+  /**
+   * Calculate confidence score for extracted data
+   */
+calculateExtractionConfidence(data) {
+  let score = 0;
+  let fields = 0;
+
+  // Critical fields (weighted higher)
+  const criticalFields = [
+    { field: 'claimType', weight: 2 },
+    { field: 'dateOfIncident', weight: 2 },  // CHANGED from incidentDate
+    { field: 'incidentDescription', weight: 2 },
+    { field: 'estimatedAmount', weight: 1.5 }  // CHANGED from claimAmount
+  ];
+
+  // Regular fields
+  const regularFields = [
+    'incidentLocation',
+    'claimantName',
+    'contactPhone',
+    'policyNumber',
+    'claimNumber'  // ADDED
+  ];
+    // Check critical fields
+    criticalFields.forEach(({ field, weight }) => {
+      if (data[field] !== null && data[field] !== undefined) {
+        score += weight;
+      }
+      fields += weight;
+    });
+
+    // Check regular fields
+    regularFields.forEach(field => {
+      if (data[field] !== null && data[field] !== undefined) {
+        score += 1;
+      }
+      fields += 1;
+    });
+
+    return score / fields; // Returns a value between 0 and 1
+  }
+
+  /**
+   * Extract text from various file types
+   * This is a placeholder - in production, use appropriate libraries
+   */
+  async extractTextFromFile(file) {
+    const fileType = file.type.toLowerCase();
+    const fileName = file.name.toLowerCase();
+
+    if (fileType === 'text/plain' || fileName.endsWith('.txt')) {
+      return this.extractFromTextFile(file);
+    } else if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
+      return this.extractFromPDF(file);
+    } else if (fileType.includes('image/')) {
+      return this.extractFromImage(file);
+    } else {
+      throw new Error(`Unsupported file type: ${file.type}`);
+    }
+  }
+
+  async extractFromTextFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = () => reject(new Error('Failed to read text file'));
+      reader.readAsText(file);
+    });
+  }
+
+  async extractFromPDF(file) {
+    // In production, use pdf.js or similar
+    return `[PDF Content - ${file.name}]\n\nPDF extraction would happen here in production using libraries like pdf.js`;
+  }
+
+  async extractFromImage(file) {
+    // In production, use OCR service
+    return `[Image Content - ${file.name}]\n\nOCR extraction would happen here in production using services like Google Vision API or Tesseract`;
+  }
+
+  /**
+   * Merge multiple extraction results
+   */
+  mergeExtractionResults(results) {
+    const merged = {};
+    
+    // Priority order for fields (later results override earlier ones if not null)
+    results.forEach(result => {
+      if (!result || !result.claimData) return;
+      
+      Object.keys(result.claimData).forEach(key => {
+        const value = result.claimData[key];
+        
+        // Only override if new value is not null and current is null
+        // or if new value has higher confidence
+        if (value !== null && value !== undefined) {
+          if (merged[key] === null || merged[key] === undefined) {
+            merged[key] = value;
+          }
+        }
+      });
+    });
+    
+    return merged;
+  }
+
+  /**
+   * Intelligent form pre-filling based on extraction confidence
+   */
+  generatePreFillRecommendations(extractedData, confidence) {
+    const recommendations = {
+      autoFill: [],
+      requireConfirmation: [],
+      manualEntry: []
+    };
+
+    Object.entries(extractedData).forEach(([field, value]) => {
+      if (value === null || value === undefined) {
+        recommendations.manualEntry.push(field);
+      } else if (confidence > 0.8) {
+        recommendations.autoFill.push(field);
+      } else {
+        recommendations.requireConfirmation.push(field);
+      }
+    });
+
+    return recommendations;
+  }
+}
+
+export default DocumentProcessor;

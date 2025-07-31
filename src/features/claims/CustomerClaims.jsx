@@ -4,7 +4,7 @@ import {
   FileText, Plus, Search, Filter, Download, 
   Calendar, ChevronDown, Eye, Clock, CheckCircle, 
   XCircle, AlertCircle, Shield, TrendingUp,
-  Activity, Sparkles, ChevronRight, Brain
+  Activity, Sparkles, ChevronRight, Brain, Car, Stethoscope, Home, Heart
 } from 'lucide-react'
 import { useAuth } from '@contexts/AuthContext'
 import { supabaseHelpers } from '@services/supabase'
@@ -165,16 +165,16 @@ export const CustomerClaims = () => {
     )
   }
 
-  const getClaimTypeIcon = (type) => {
-    const icons = {
-      auto: '🚗',
-      health: '🏥',
-      property: '🏠',
-      life: '❤️',
-      other: '📋'
-    }
-    return icons[type] || '📋'
+const getClaimTypeIcon = (type) => {
+  const icons = {
+    auto: '▣',      // Filled square (document/form symbol)
+    health: '✚',    // Medical cross
+    property: '▦',  // Rectangle (building/property symbol)
+    life: '◉',      // Circle with dot (record/policy symbol)
+    other: '▪'      // Small filled square (generic document)
   }
+  return icons[type] || '▪'
+}
 
   if (loading) {
     return (

@@ -87,101 +87,69 @@ export const supabaseHelpers = {
       
       if (error) {
         console.error('❌ Profile fetch error:', error)
-        
-        // If profile doesn't exist, return null data instead of error
-        if (error.code === 'PGRST116') {
-          console.log('ℹ️ Profile not found for user:', userId)
-          return { data: null, error: null }
-        }
-        
         return { data: null, error }
       }
       
       console.log('✅ Profile fetched successfully')
       return { data, error: null }
     } catch (error) {
-      console.error('❌ Unexpected error fetching profile:', error)
-      return { data: null, error }
-    }
-  },
-
-  async createProfile(profileData) {
-    console.log('✨ Creating profile:', profileData)
-    
-    if (!profileData.id) {
-      console.error('❌ No user ID provided for profile creation')
-      return { data: null, error: new Error('User ID is required') }
-    }
-    
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .insert([profileData])
-        .select()
-        .single()
-      
-      if (error) {
-        console.error('❌ Profile creation error:', error)
-        return { data: null, error }
-      }
-      
-      console.log('✅ Profile created successfully')
-      return { data, error: null }
-    } catch (error) {
-      console.error('❌ Unexpected error creating profile:', error)
+      console.error('❌ Unexpected profile fetch error:', error)
       return { data: null, error }
     }
   },
 
   async updateProfile(userId, updates) {
-    console.log('📝 Updating profile:', userId, updates)
+    const { data, error } = await supabase
+      .from('profiles')
+      .update(updates)
+      .eq('id', userId)
+      .select()
+      .single()
     
-    if (!userId) {
-      console.error('❌ No userId provided to updateProfile')
-      return { data: null, error: new Error('User ID is required') }
-    }
-    
+    return { data, error }
+  },
+
+  // Enhanced claim helpers with better error handling
+  async createClaim(claimData) {
     try {
       const { data, error } = await supabase
-        .from('profiles')
-        .update(updates)
-        .eq('id', userId)
+        .from('claims')
+        .insert([claimData])
         .select()
         .single()
       
       if (error) {
-        console.error('❌ Profile update error:', error)
+        console.error('Claim creation error:', error)
         return { data: null, error }
       }
       
-      console.log('✅ Profile updated successfully')
+      console.log('Claim created successfully:', data.id)
       return { data, error: null }
     } catch (error) {
-      console.error('❌ Unexpected error updating profile:', error)
+      console.error('Unexpected claim creation error:', error)
       return { data: null, error }
     }
   },
 
-  // Claims helpers
-  async getClaims(filters = {}) {
-    let query = supabase.from('claims').select('*')
-    
-    if (filters.customer_id) {
-      query = query.eq('customer_id', filters.customer_id)
+  async updateClaim(claimId, updates) {
+    try {
+      const { data, error } = await supabase
+        .from('claims')
+        .update(updates)
+        .eq('id', claimId)
+        .select()
+        .single()
+      
+      if (error) {
+        console.error('Claim update error:', error)
+        return { data: null, error }
+      }
+      
+      return { data, error: null }
+    } catch (error) {
+      console.error('Unexpected claim update error:', error)
+      return { data: null, error }
     }
-    
-    if (filters.insurer_id) {
-      query = query.eq('insurer_id', filters.insurer_id)
-    }
-    
-    if (filters.status) {
-      query = query.eq('status', filters.status)
-    }
-    
-    query = query.order('created_at', { ascending: false })
-    
-    const { data, error } = await query
-    return { data: data || [], error }
   },
 
   async getClaim(claimId) {
@@ -194,25 +162,315 @@ export const supabaseHelpers = {
     return { data, error }
   },
 
-  async createClaim(claimData) {
-    const { data, error } = await supabase
-      .from('claims')
-      .insert([claimData])
-      .select()
-      .single()
+  async getClaims(filters = {}) {
+    let query = supabase.from('claims').select('*')
     
-    return { data, error }
+    if (filters.customer_id) {
+      query = query.eq('customer_id', filters.customer_id)
+    }
+    
+    if (filters.status) {
+      query = query.eq('status', filters.status)
+    }
+    
+    query = query.order('created_at', { ascending: false })
+    
+    const { data, error } = await query
+    return { data: data || [], error }
   },
 
-  async updateClaim(claimId, updates) {
-    const { data, error } = await supabase
+  async deleteClaim(claimId) {
+    const { error } = await supabase
       .from('claims')
-      .update(updates)
+      .delete()
       .eq('id', claimId)
-      .select()
-      .single()
     
-    return { data, error }
+    return { error }
+  },
+
+  // NEW: Update claim status with optional data
+  async updateClaimStatus(claimId, status, additionalData = {}) {
+    const updates = {
+      status,
+      ...additionalData,
+      updated_at: new Date().toISOString()
+    }
+
+    return this.updateClaim(claimId, updates)
+  },
+
+  // NEW: Transactional claim creation with rollback support
+  async createClaimWithDocuments(claimData, files, userId) {
+    let createdClaim = null
+    let uploadedFiles = []
+
+    try {
+      // Step 1: Create the claim
+      const { data: claim, error: claimError } = await this.createClaim(claimData)
+      if (claimError) throw claimError
+      
+      createdClaim = claim
+
+      // Step 2: Upload files if provided
+      if (files && files.length > 0) {
+        const { documentUploadService } = await import('./documentUpload')
+        
+        const uploadResult = await documentUploadService.uploadMultipleFiles(
+          files,
+          createdClaim.id,
+          userId
+        )
+
+        if (uploadResult.errors.length > 0) {
+          console.warn('Some files failed to upload:', uploadResult.errors)
+        }
+
+        uploadedFiles = uploadResult.uploadedFiles
+
+        // Step 3: Update claim with file references
+        if (uploadedFiles.length > 0) {
+          const { error: updateError } = await this.updateClaim(createdClaim.id, {
+            claim_data: {
+              ...createdClaim.claim_data,
+              documents: uploadedFiles
+            },
+            documents: uploadedFiles.map(f => f.url)
+          })
+
+          if (updateError) {
+            throw new Error('Failed to update claim with documents')
+          }
+        }
+      }
+
+      return {
+        success: true,
+        claim: createdClaim,
+        uploadedFiles
+      }
+
+    } catch (error) {
+      console.error('Transaction failed:', error)
+
+      // Rollback: Delete claim if it was created
+      if (createdClaim) {
+        await this.deleteClaim(createdClaim.id).catch(err => 
+          console.error('Failed to rollback claim:', err)
+        )
+      }
+
+      // Rollback: Delete uploaded files
+      if (uploadedFiles.length > 0) {
+        const { documentUploadService } = await import('./documentUpload')
+        await documentUploadService.deleteMultipleFiles(
+          uploadedFiles.map(f => f.filePath)
+        ).catch(err => 
+          console.error('Failed to cleanup files:', err)
+        )
+      }
+
+      return {
+        success: false,
+        error: error.message
+      }
+    }
+  },
+
+  // NEW: Get claim with related data
+  async getClaimWithRelations(claimId) {
+    try {
+      // Get claim
+      const { data: claim, error: claimError } = await this.getClaim(claimId)
+      if (claimError) throw claimError
+
+      // Get related payments
+      const { data: payments } = await this.getPayments({ claim_id: claimId })
+
+      // Get customer profile
+      const { data: customer } = await this.getProfile(claim.customer_id)
+
+      return {
+        data: {
+          ...claim,
+          payments: payments || [],
+          customer: customer || null
+        },
+        error: null
+      }
+    } catch (error) {
+      return { data: null, error }
+    }
+  },
+
+  // NEW: Batch update claims
+  async updateMultipleClaims(claimIds, updates) {
+    try {
+      const { data, error } = await supabase
+        .from('claims')
+        .update(updates)
+        .in('id', claimIds)
+        .select()
+
+      return { data: data || [], error }
+    } catch (error) {
+      return { data: [], error }
+    }
+  },
+
+  // NEW: Get claim statistics for dashboard
+  async getClaimStatistics(filters = {}) {
+    try {
+      let query = supabase.from('claims').select('*')
+
+      if (filters.customer_id) {
+        query = query.eq('customer_id', filters.customer_id)
+      }
+      if (filters.insurer_id) {
+        query = query.eq('insurer_id', filters.insurer_id)
+      }
+      if (filters.date_from) {
+        query = query.gte('created_at', filters.date_from)
+      }
+      if (filters.date_to) {
+        query = query.lte('created_at', filters.date_to)
+      }
+
+      const { data: claims, error } = await query
+
+      if (error) {
+        return { stats: null, error }
+      }
+
+      // Calculate statistics
+      const stats = {
+        total: claims.length,
+        submitted: claims.filter(c => c.status === 'submitted').length,
+        processing: claims.filter(c => c.status === 'processing').length,
+        approved: claims.filter(c => c.status === 'approved').length,
+        rejected: claims.filter(c => c.status === 'rejected').length,
+        totalAmount: claims.reduce((sum, c) => 
+          sum + (parseFloat(c.claim_data?.estimatedAmount) || 0), 0
+        ),
+        averageProcessingTime: this.calculateAverageProcessingTime(claims)
+      }
+
+      return { stats, error: null }
+    } catch (error) {
+      return { stats: null, error }
+    }
+  },
+
+  calculateAverageProcessingTime(claims) {
+    const processedClaims = claims.filter(c => 
+      ['approved', 'rejected'].includes(c.status) && c.updated_at
+    )
+
+    if (processedClaims.length === 0) return 0
+
+    const totalDays = processedClaims.reduce((sum, claim) => {
+      const created = new Date(claim.created_at)
+      const updated = new Date(claim.updated_at)
+      const days = Math.ceil((updated - created) / (1000 * 60 * 60 * 24))
+      return sum + days
+    }, 0)
+
+    return (totalDays / processedClaims.length).toFixed(1)
+  },
+
+  // NEW: Complete claim processing with payment
+  async completeClaimWithPayment(claimId, paymentData) {
+    try {
+      // Update claim status
+      const { data: claim, error: claimError } = await this.updateClaimStatus(
+        claimId, 
+        'approved',
+        { 
+          claim_data: { 
+            ...paymentData,
+            approvedAt: new Date().toISOString() 
+          } 
+        }
+      )
+
+      if (claimError) throw claimError
+
+      // Create payment record
+      const { data: payment, error: paymentError } = await this.createPayment({
+        ...paymentData,
+        claim_id: claimId,
+        customer_id: claim.customer_id,
+        status: 'completed'
+      })
+
+      if (paymentError) throw paymentError
+
+      return { claim, payment, error: null }
+    } catch (error) {
+      return { claim: null, payment: null, error }
+    }
+  },
+
+  // NEW: Create claim-specific notification
+  async createClaimNotification(userId, claimId, type, title, message, data = {}) {
+    try {
+      const notificationData = {
+        user_id: userId,
+        type,
+        title,
+        message,
+        data: {
+          claimId,
+          ...data
+        },
+        read: false,
+        created_at: new Date().toISOString()
+      }
+
+      const { data: notification, error } = await supabase
+        .from('notifications')
+        .insert([notificationData])
+        .select()
+        .single()
+
+      return notification
+    } catch (error) {
+      console.error('Notification creation error:', error)
+      return null
+    }
+  },
+
+  // NEW: Create audit log entry
+  async createAuditLog(logData) {
+    try {
+      // For now, store in claim_data as audit_trail
+      // In production, create a separate audit_logs table
+      const { data: claim } = await supabase
+        .from('claims')
+        .select('claim_data')
+        .eq('id', logData.claim_id)
+        .single()
+
+      if (!claim) return
+
+      const auditTrail = claim.claim_data.audit_trail || []
+      auditTrail.push({
+        ...logData,
+        timestamp: new Date().toISOString()
+      })
+
+      await supabase
+        .from('claims')
+        .update({
+          claim_data: {
+            ...claim.claim_data,
+            audit_trail: auditTrail
+          }
+        })
+        .eq('id', logData.claim_id)
+
+    } catch (error) {
+      console.error('Audit log error:', error)
+    }
   },
 
   // Payments helpers
@@ -282,21 +540,6 @@ export const supabaseHelpers = {
       .eq('id', notificationId)
     
     return { error }
-  },
-
-  // Helper function to create claim notifications
-  async createClaimNotification(userId, claimId, type, title, message, additionalData = {}) {
-    return await this.createNotification({
-      user_id: userId,
-      type: type || 'claim_update',
-      title,
-      message,
-      data: { 
-        claimId, 
-        ...additionalData 
-      },
-      read: false
-    })
   },
 
   // File storage helpers

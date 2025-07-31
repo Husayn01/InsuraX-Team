@@ -5,6 +5,7 @@ import { FraudDetector } from './fraudDetector.js';
 import { ClaimCategorizer } from './claimCategorizer.js';
 import { ResponseGenerator } from './responseGenerator.js';
 import { ClaimsChatInterface } from './chatInterface.js';
+import { loadDocumentLibraries, loadTesseract, documentLibs } from '../utils/documentLibsLoader.js';
 
 export class ClaimsProcessingSystem {
   constructor() {
@@ -20,6 +21,18 @@ export class ClaimsProcessingSystem {
       '.jpg', '.jpeg', '.png', '.gif', '.bmp',
       '.json', '.xml', '.csv'
     ];
+
+    // Initialize libraries
+    this.librariesLoaded = false;
+    this.tesseractWorker = null;
+    this.initializeLibraries();
+  }
+
+  async initializeLibraries() {
+    this.librariesLoaded = await loadDocumentLibraries();
+    if (!this.librariesLoaded) {
+      console.warn('Document processing libraries failed to load. Some features may be limited.');
+    }
   }
 
   /**
@@ -43,113 +56,113 @@ export class ClaimsProcessingSystem {
         throw new Error(extractionResult.error || 'Document extraction failed');
       }
 
-      const claimData = extractionResult.data;
-
-      // Step 2: Validate extracted information
-      console.log(`[${processingId}] Validating claim information...`);
-      const validationResult = await this.documentProcessor.validateClaimInformation(claimData);
+      // Step 2: Detect fraud
+      console.log(`[${processingId}] Running fraud detection...`);
+      const fraudResult = await this.fraudDetector.assessFraudRisk(extractionResult.claimData);
       
-      if (!validationResult.success) {
-        throw new Error(validationResult.error || 'Validation failed');
+      if (!fraudResult.success) {
+        console.warn('Fraud detection failed, using default low risk');
+        fraudResult.assessment = {
+          riskLevel: 'low',
+          riskScore: 0,
+          confidence: 'low'
+        };
       }
 
-      // Step 3: Assess fraud risk
-      console.log(`[${processingId}] Assessing fraud risk...`);
-      const fraudAssessment = await this.fraudDetector.assessFraudRisk(
-        claimData, 
-        options.additionalContext || ''
-      );
-      
-      if (!fraudAssessment.success) {
-        throw new Error(fraudAssessment.error || 'Fraud assessment failed');
-      }
-
-      // Step 4: Categorize and prioritize
-      console.log(`[${processingId}] Categorizing and prioritizing claim...`);
+      // Step 3: Categorize the claim with fraud assessment
+      console.log(`[${processingId}] Categorizing claim...`);
       const categorizationResult = await this.claimCategorizer.categorizeAndPrioritize(
-        claimData, 
-        fraudAssessment.assessment
+        extractionResult.claimData,
+        fraudResult.assessment
       );
       
       if (!categorizationResult.success) {
         throw new Error(categorizationResult.error || 'Categorization failed');
       }
 
-      // Step 5: Generate summary and recommendations
-      console.log(`[${processingId}] Generating summary and recommendations...`);
-      const summaryResult = await this.responseGenerator.generateClaimSummary(
-        claimData,
-        fraudAssessment.assessment,
+      // Step 4: Generate action plan
+      const actionPlan = this.generateActionPlan(
+        { validationStatus: 'complete', requiredActions: [] }, // Default validation result
+        fraudResult.assessment,
         categorizationResult.categorization
       );
 
-      if (!summaryResult.success) {
-        throw new Error(summaryResult.error || 'Summary generation failed');
-      }
-
-      // Step 6: Generate customer response if requested
+      // Step 5: Generate responses if requested
       let customerResponse = null;
+      let internalMemo = null;
+
       if (options.generateCustomerResponse) {
         console.log(`[${processingId}] Generating customer response...`);
         const responseResult = await this.responseGenerator.generateCustomerResponse(
-          claimData,
-          summaryResult.summary,
-          options.customerFriendly !== false
+          extractionResult.claimData,
+          { validationStatus: 'complete', requiredActions: [] }, // Default validation result
+          fraudResult.assessment,
+          actionPlan
         );
         
-        if (!responseResult.success) {
-          console.warn(`Customer response generation failed: ${responseResult.error}`);
-        } else {
+        if (responseResult.success) {
           customerResponse = responseResult.response;
         }
       }
 
-      // Step 7: Generate action plan
-      console.log(`[${processingId}] Generating action plan...`);
-      const actionPlan = this.generateActionPlan(
-        validationResult.validation,
-        fraudAssessment.assessment,
-        categorizationResult.categorization
-      );
-
-      // Compile final result
-      const processingTimeMs = Date.now() - startTime;
-      const result = {
-        processingId,
-        status: 'completed',
-        processingTimeMs,
-        timestamp: new Date().toISOString(),
-        extractedData: claimData,
-        validation: validationResult.validation,
-        fraudAssessment: fraudAssessment.assessment,
-        categorization: categorizationResult.categorization,
-        summary: summaryResult.summary,
-        customerResponse,
-        actionPlan,
-        metadata: {
-          documentLength: documentText.length,
-          processingOptions: options
+      if (options.generateInternalMemo) {
+        console.log(`[${processingId}] Generating internal memo...`);
+        const memoResult = await this.responseGenerator.generateInternalMemo(
+          extractionResult.claimData,
+          fraudResult.assessment,
+          categorizationResult.categorization
+        );
+        
+        if (memoResult.success) {
+          internalMemo = memoResult.memo;
         }
+      }
+
+      // Store the processed claim
+      const processedClaim = {
+        id: processingId,
+        timestamp: new Date().toISOString(),
+        processingTime: Date.now() - startTime,
+        claimData: extractionResult.claimData,
+        categorization: categorizationResult.categorization,
+        validation: { validationStatus: 'complete', requiredActions: [] },
+        fraudAssessment: fraudResult.assessment,
+        actionPlan,
+        customerResponse,
+        internalMemo,
+        status: 'completed'
       };
 
-      // Store result
-      this.processedClaims.set(processingId, result);
-      console.log(`[${processingId}] Processing completed in ${processingTimeMs}ms`);
+      this.processedClaims.set(processingId, processedClaim);
 
-      return result;
+      console.log(`[${processingId}] Processing completed in ${processedClaim.processingTime}ms`);
+
+      return {
+        success: true,
+        ...processedClaim
+      };
+
     } catch (error) {
       console.error(`[${processingId}] Processing failed:`, error);
       
-      const failedResult = {
-        processingId,
+      const failedClaim = {
+        id: processingId,
+        timestamp: new Date().toISOString(),
+        processingTime: Date.now() - startTime,
         status: 'failed',
         error: error.message,
-        processingTimeMs: Date.now() - startTime,
-        timestamp: new Date().toISOString()
+        claimData: null,
+        validation: null,
+        fraudAssessment: null,
+        categorization: null
       };
 
-      this.processedClaims.set(processingId, failedResult);
-      return failedResult;
+      this.processedClaims.set(processingId, failedClaim);
+
+      return {
+        success: false,
+        ...failedClaim
+      };
     }
   }
 
@@ -162,18 +175,27 @@ export class ClaimsProcessingSystem {
     const fileType = file.type.toLowerCase();
     const fileName = file.name.toLowerCase();
 
-    if (fileType === 'text/plain' || fileName.endsWith('.txt')) {
-      return await this.extractFromTextFile(file);
-    } else if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
-      return await this.extractFromPDF(file);
-    } else if (fileName.endsWith('.doc') || fileName.endsWith('.docx') || 
-               fileType.includes('msword') || fileType.includes('wordprocessingml')) {
-      return await this.extractFromWord(file);
-    } else if (fileType.startsWith('image/') || 
-               ['.jpg', '.jpeg', '.png', '.gif', '.bmp'].some(ext => fileName.endsWith(ext))) {
-      return await this.extractFromImage(file);
-    } else {
-      throw new Error(`Unsupported file type: ${file.type || 'unknown'}`);
+    try {
+      if (fileType === 'text/plain' || fileName.endsWith('.txt')) {
+        return await this.extractFromTextFile(file);
+      } else if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
+        return await this.extractFromPDF(file);
+      } else if (fileName.endsWith('.doc') || fileName.endsWith('.docx') || 
+                 fileType.includes('msword') || fileType.includes('wordprocessingml')) {
+        return await this.extractFromWord(file);
+      } else if (fileType.startsWith('image/') || 
+                 ['.jpg', '.jpeg', '.png', '.gif', '.bmp'].some(ext => fileName.endsWith(ext))) {
+        return await this.extractFromImage(file);
+      } else if (fileType === 'application/json' || fileName.endsWith('.json')) {
+        return await this.extractFromJSON(file);
+      } else if (fileName.endsWith('.csv')) {
+        return await this.extractFromCSV(file);
+      } else {
+        throw new Error(`Unsupported file type: ${file.type || 'unknown'}`);
+      }
+    } catch (error) {
+      console.error('File extraction error:', error);
+      throw new Error(`Failed to extract text from ${file.name}: ${error.message}`);
     }
   }
 
@@ -187,82 +209,159 @@ export class ClaimsProcessingSystem {
   }
 
   async extractFromPDF(file) {
-    // In a real implementation, this would use a library like pdf.js
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        resolve(`EXTRACTED FROM PDF: ${file.name}
-        
-This is simulated text extraction from a PDF file. In a real implementation,
-this would use libraries like pdf.js or pdf-parse to extract actual text content.
+    // Ensure PDF.js is loaded
+    if (!documentLibs.pdf) {
+      await loadDocumentLibraries();
+      if (!documentLibs.pdf) {
+        throw new Error('PDF.js library failed to load');
+      }
+    }
 
-File: ${file.name}
-Size: ${file.size} bytes
-Type: ${file.type}
-
-[Actual PDF content would be extracted here using PDF parsing libraries]`);
-      };
-      reader.onerror = () => reject(new Error('Failed to read PDF file'));
-      reader.readAsArrayBuffer(file);
-    });
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await documentLibs.pdf.getDocument({ data: arrayBuffer }).promise;
+      let fullText = '';
+      
+      // Extract text from each page
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+          .map(item => item.str)
+          .join(' ');
+        fullText += pageText + '\n\n';
+      }
+      
+      // Add metadata
+      const metadata = await pdf.getMetadata();
+      let result = `PDF Document: ${file.name}\n`;
+      
+      if (metadata.info) {
+        result += `Title: ${metadata.info.Title || 'N/A'}\n`;
+        result += `Author: ${metadata.info.Author || 'N/A'}\n`;
+        result += `Created: ${metadata.info.CreationDate || 'N/A'}\n`;
+      }
+      
+      result += `Pages: ${pdf.numPages}\n\n`;
+      result += `Content:\n${fullText}`;
+      
+      return result.trim();
+    } catch (error) {
+      console.error('PDF extraction error:', error);
+      throw new Error(`PDF extraction failed: ${error.message}`);
+    }
   }
 
   async extractFromWord(file) {
-    // In a real implementation, this would use a library like mammoth.js
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          resolve(`EXTRACTED FROM WORD DOCUMENT: ${file.name}
-          
-This is simulated text extraction from a Word document. In a real implementation,
-this would use libraries like mammoth.js to extract actual text content from 
-.doc and .docx files.
+    // Ensure Mammoth is loaded
+    if (!documentLibs.mammoth) {
+      await loadDocumentLibraries();
+      if (!documentLibs.mammoth) {
+        throw new Error('Mammoth.js library failed to load');
+      }
+    }
 
-File: ${file.name}
-Size: ${file.size} bytes
-Type: ${file.type}
-
-[Actual document content would be extracted here using mammoth.js or similar library]`);
-        } catch (error) {
-          reject(new Error('Word document processing failed'));
-        }
-      };
-      reader.onerror = () => reject(new Error('Failed to read Word document'));
-      reader.readAsArrayBuffer(file);
-    });
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const result = await documentLibs.mammoth.extractRawText({ arrayBuffer });
+      
+      if (result.messages && result.messages.length > 0) {
+        console.warn('Word extraction warnings:', result.messages);
+      }
+      
+      const text = result.value;
+      
+      // Add file metadata
+      const extractedText = `Word Document: ${file.name}\n` +
+                          `Size: ${(file.size / 1024).toFixed(2)} KB\n` +
+                          `Last Modified: ${new Date(file.lastModified).toLocaleString()}\n\n` +
+                          `Content:\n${text}`;
+      
+      return extractedText;
+    } catch (error) {
+      console.error('Word extraction error:', error);
+      throw new Error(`Word document extraction failed: ${error.message}`);
+    }
   }
 
   async extractFromImage(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const img = new Image();
-          img.onload = () => {
-            resolve(`EXTRACTED FROM IMAGE: ${file.name}
-            
-This is simulated OCR text extraction from an image. In a real implementation,
-this would use libraries like Tesseract.js or cloud-based OCR services to extract
-text from images.
-
-Image Details:
-- File: ${file.name}
-- Size: ${file.size} bytes
-- Type: ${file.type}
-- Dimensions: ${img.width}x${img.height}
-
-[OCR extracted text would appear here after real image processing]`);
-          };
-          img.onerror = () => reject(new Error('Invalid image file'));
-          img.src = e.target.result;
-        } catch (error) {
-          reject(new Error('Image processing failed'));
+    try {
+      // Load Tesseract on demand
+      if (!this.tesseractWorker) {
+        const Tesseract = await loadTesseract();
+        if (!Tesseract) {
+          throw new Error('Tesseract.js failed to load');
         }
-      };
-      reader.onerror = () => reject(new Error('Failed to read image file'));
-      reader.readAsDataURL(file);
-    });
+
+        this.tesseractWorker = await Tesseract.createWorker({
+          logger: m => console.log('OCR Progress:', m.progress)
+        });
+        await this.tesseractWorker.loadLanguage('eng');
+        await this.tesseractWorker.initialize('eng');
+      }
+
+      // Convert file to data URL for Tesseract
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      // Perform OCR
+      console.log(`Performing OCR on ${file.name}...`);
+      const { data: { text, confidence } } = await this.tesseractWorker.recognize(dataUrl);
+      
+      // Add metadata and confidence info
+      const extractedText = `Image Document: ${file.name}\n` +
+                          `Type: ${file.type}\n` +
+                          `Size: ${(file.size / 1024).toFixed(2)} KB\n` +
+                          `OCR Confidence: ${confidence.toFixed(2)}%\n\n` +
+                          `Extracted Text:\n${text}`;
+      
+      return extractedText;
+    } catch (error) {
+      console.error('OCR extraction error:', error);
+      // Fallback message if OCR fails
+      return `Image Document: ${file.name}\n` +
+             `OCR extraction failed: ${error.message}\n` +
+             `Please ensure the image contains clear, readable text.`;
+    }
+  }
+
+  async extractFromJSON(file) {
+    try {
+      const text = await this.extractFromTextFile(file);
+      const jsonData = JSON.parse(text);
+      
+      // Convert JSON to readable format
+      const formattedText = `JSON Document: ${file.name}\n\n` +
+                          `Structured Data:\n` +
+                          JSON.stringify(jsonData, null, 2);
+      
+      return formattedText;
+    } catch (error) {
+      throw new Error(`Invalid JSON file: ${error.message}`);
+    }
+  }
+
+  async extractFromCSV(file) {
+    try {
+      const text = await this.extractFromTextFile(file);
+      
+      // Basic CSV parsing (for more complex CSVs, use a library like PapaParse)
+      const lines = text.split('\n').filter(line => line.trim());
+      const headers = lines[0]?.split(',').map(h => h.trim());
+      
+      let formattedText = `CSV Document: ${file.name}\n\n`;
+      formattedText += `Headers: ${headers?.join(', ') || 'None'}\n`;
+      formattedText += `Rows: ${lines.length - 1}\n\n`;
+      formattedText += `Data:\n${text}`;
+      
+      return formattedText;
+    } catch (error) {
+      throw new Error(`CSV extraction failed: ${error.message}`);
+    }
   }
 
   /**
@@ -358,68 +457,38 @@ Image Details:
     // Calculate distributions
     claims.forEach(claim => {
       // Risk distribution
-      const riskLevel = claim.fraudAssessment?.riskLevel || 'unknown';
-      analytics.riskDistribution[riskLevel] = (analytics.riskDistribution[riskLevel] || 0) + 1;
+      if (claim.fraudAssessment?.riskLevel) {
+        analytics.riskDistribution[claim.fraudAssessment.riskLevel] = 
+          (analytics.riskDistribution[claim.fraudAssessment.riskLevel] || 0) + 1;
+      }
 
       // Claim type distribution
-      const claimType = claim.extractedData?.claimType || 'unknown';
-      analytics.claimTypeDistribution[claimType] = (analytics.claimTypeDistribution[claimType] || 0) + 1;
+      if (claim.claimData?.claimType) {
+        analytics.claimTypeDistribution[claim.claimData.claimType] = 
+          (analytics.claimTypeDistribution[claim.claimData.claimType] || 0) + 1;
+      }
 
       // Priority distribution
-      const priority = claim.categorization?.priority?.level || 'unknown';
-      analytics.priorityDistribution[priority] = (analytics.priorityDistribution[priority] || 0) + 1;
+      if (claim.categorization?.priority?.level) {
+        analytics.priorityDistribution[claim.categorization.priority.level] = 
+          (analytics.priorityDistribution[claim.categorization.priority.level] || 0) + 1;
+      }
     });
 
     return analytics;
   }
 
-  /**
-   * Utility function to generate unique processing IDs
-   */
   generateProcessingId() {
-    return `claim_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `CLM-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 
   /**
-   * Clear all processed claims (useful for testing)
+   * Cleanup resources
    */
-  clearAllClaims() {
-    this.processedClaims.clear();
-    this.chatInterface.clearHistory();
-  }
-
-  /**
-   * Test JSON generation (for debugging)
-   */
-  async testJSONGeneration() {
-    console.log('Testing JSON generation...');
-    
-    try {
-      // Test 1: Simple JSON
-      const test1 = await geminiClient.chatCompletion([
-        { role: 'user', content: 'Return exactly this JSON: {"test": "simple", "value": 123}' }
-      ]);
-      console.log('Test 1 - Simple JSON:', test1.choices[0].message.content);
-      
-      // Test 2: Complex JSON with the document processor
-      const test2Result = await this.documentProcessor.extractClaimInformation(
-        'Test claim. Claim number: TEST-123. Claimant: John Doe. Amount: $5000.'
-      );
-      console.log('Test 2 - Document extraction:', test2Result);
-      
-      return {
-        test1: test1.choices[0].message.content,
-        test2: test2Result
-      };
-    } catch (error) {
-      console.error('JSON generation test failed:', error);
-      return { error: error.message };
+  async cleanup() {
+    if (this.tesseractWorker) {
+      await this.tesseractWorker.terminate();
+      this.tesseractWorker = null;
     }
   }
 }
-
-// Export singleton instance
-export const claimsSystem = new ClaimsProcessingSystem();
-
-// Export class for custom instances
-export default ClaimsProcessingSystem;

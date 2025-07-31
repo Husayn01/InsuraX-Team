@@ -562,7 +562,7 @@ Contact: +234 805 678 9012`
               AI Analysis Complete
             </h2>
             <Badge className="bg-green-500/20 text-green-400 border-green-500/30 px-4 py-2">
-              Processing Time: {(currentResult.processingTimeMs / 1000).toFixed(1)}s
+              Processing Time: {(currentResult.processingTime / 1000).toFixed(1)}s
             </Badge>
           </div>
 
@@ -588,12 +588,12 @@ Contact: +234 805 678 9012`
                 <CardBody className="p-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {[
-                      { label: 'Claim Number', value: currentResult.extractedData?.claimNumber || 'Not found', icon: Hash },
-                      { label: 'Claimant', value: currentResult.extractedData?.claimantName || 'Not found', icon: User },
-                      { label: 'Type', value: currentResult.extractedData?.claimType || 'Unknown', icon: Tag },
-                      { label: 'Amount', value: formatCurrency(currentResult.extractedData?.estimatedAmount || 0), icon: DollarSign },
-                      { label: 'Date of Incident', value: currentResult.extractedData?.dateOfIncident || 'Not found', icon: Calendar },
-                      { label: 'Location', value: currentResult.extractedData?.incidentLocation || 'Not found', icon: MapPin }
+                      { label: 'Claim Number', value: currentResult.claimData?.claimNumber || 'Not found', icon: Hash },
+                      { label: 'Claimant', value: currentResult.claimData?.claimantName || 'Not found', icon: User },
+                      { label: 'Type', value: currentResult.claimData?.claimType || 'Unknown', icon: Tag },
+                      { label: 'Amount', value: formatCurrency(currentResult.claimData?.estimatedAmount || 0), icon: DollarSign },
+                      { label: 'Date of Incident', value: currentResult.claimData?.dateOfIncident || 'Not found', icon: Calendar },
+                      { label: 'Location', value: currentResult.claimData?.incidentLocation || 'Not found', icon: MapPin }
                     ].map((item, index) => (
                       <div key={index} className="flex items-start gap-3 p-3 bg-gray-700/30 rounded-lg">
                         <div className="p-2 bg-gray-600/50 rounded-lg">
@@ -607,10 +607,10 @@ Contact: +234 805 678 9012`
                     ))}
                   </div>
                   
-                  {currentResult.extractedData?.confidence && (
+                  {currentResult.claimData?.confidence && (
                     <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
                       <p className="text-sm text-blue-400">
-                        Extraction Confidence: <span className="font-semibold capitalize">{currentResult.extractedData.confidence}</span>
+                        Extraction Confidence: <span className="font-semibold capitalize">{currentResult.claimData.confidence}</span>
                       </p>
                     </div>
                   )}
@@ -839,12 +839,12 @@ Contact: +234 805 678 9012`
                     </div>
                     
                     <h4 className="font-semibold text-white text-lg mb-1">
-                      {claim.extractedData?.claimNumber || claim.processingId}
+                      {claim.claimData?.claimNumber || claim.processingId}
                     </h4>
                     <p className="text-sm text-gray-400">
-                      {claim.extractedData?.claimantName || 'Unknown'} • 
-                      {claim.extractedData?.claimType || 'Unknown type'} • 
-                      {formatCurrency(claim.extractedData?.estimatedAmount || 0)}
+                      {claim.claimData?.claimantName || 'Unknown'} • 
+                      {claim.claimData?.claimType || 'Unknown type'} • 
+                      {formatCurrency(claim.claimData?.estimatedAmount || 0)}
                     </p>
                   </div>
                   
@@ -869,7 +869,7 @@ Contact: +234 805 678 9012`
           <div className="bg-gray-800 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
             <div className="sticky top-0 bg-gray-800 p-6 border-b border-gray-700 flex justify-between items-center">
               <h2 className="text-2xl font-bold text-white">
-                Claim Details: {selectedClaim.extractedData?.claimNumber || 'Unknown'}
+                Claim Details: {selectedClaim.claimData?.claimNumber || 'Unknown'}
               </h2>
               <button
                 onClick={() => setSelectedClaim(null)}
@@ -884,7 +884,7 @@ Contact: +234 805 678 9012`
                 <div>
                   <h3 className="font-semibold text-cyan-400 mb-3">Extracted Data</h3>
                   <pre className="bg-gray-900/50 p-4 rounded-xl text-xs text-gray-300 overflow-x-auto border border-gray-700">
-                    {JSON.stringify(selectedClaim.extractedData, null, 2)}
+                    {JSON.stringify(selectedClaim.claimData, null, 2)}
                   </pre>
                 </div>
                 <div>
@@ -913,7 +913,7 @@ Contact: +234 805 678 9012`
   const renderAnalyticsTab = () => {
     // Calculate additional analytics
     const totalAmount = allClaims.reduce((sum, claim) => 
-      sum + (claim.extractedData?.estimatedAmount || 0), 0
+      sum + (claim.claimData?.estimatedAmount || 0), 0
     );
     
     const averageFraudScore = allClaims.length > 0

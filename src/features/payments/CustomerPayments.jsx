@@ -4,7 +4,7 @@ import {
   AlertCircle, DollarSign, Calendar, TrendingUp, 
   Smartphone, Building, Bitcoin, ArrowUpRight,
   ArrowDownRight, Activity, Zap, ChevronRight,
-  Receipt, Filter, Search
+  Receipt, Filter, Search, Loader2, Info
 } from 'lucide-react'
 import { useAuth } from '@contexts/AuthContext'
 import { DashboardLayout, PageHeader } from '@shared/layouts'
@@ -13,6 +13,9 @@ import {
   LoadingSpinner, Modal, Alert 
 } from '@shared/components'
 import { format } from 'date-fns'
+import { supabaseHelpers } from '@services/supabase'
+import { paymentService } from '@services/paymentService'
+import { FormSelect } from '@shared/components/FormComponents'
 
 export const CustomerPayments = () => {
   const { user } = useAuth()
@@ -21,6 +24,7 @@ export const CustomerPayments = () => {
   const [filteredPayments, setFilteredPayments] = useState([])
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [paymentLoading, setPaymentLoading] = useState(false)
+  const [error, setError] = useState(null)
   const [paymentForm, setPaymentForm] = useState({
     amount: '',
     paymentMethod: 'card',
@@ -48,39 +52,19 @@ export const CustomerPayments = () => {
   const fetchPayments = async () => {
     try {
       setLoading(true)
-      // In a real app, fetch from API
-      const mockPayments = [
-        {
-          id: '1',
-          amount: 25000,
-          status: 'completed',
-          payment_method: 'card',
-          description: 'Monthly premium - March 2024',
-          created_at: new Date(Date.now() - 86400000 * 30).toISOString(),
-          reference: 'PAY-2024-001'
-        },
-        {
-          id: '2',
-          amount: 25000,
-          status: 'completed',
-          payment_method: 'mobile_money',
-          description: 'Monthly premium - February 2024',
-          created_at: new Date(Date.now() - 86400000 * 60).toISOString(),
-          reference: 'PAY-2024-002'
-        },
-        {
-          id: '3',
-          amount: 5000,
-          status: 'pending',
-          payment_method: 'bank_transfer',
-          description: 'Deductible payment',
-          created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
-          reference: 'PAY-2024-003'
-        }
-      ]
       
-      setPayments(mockPayments)
-      calculateStats(mockPayments)
+      // Fetch real payments from database
+      const { data, error } = await supabaseHelpers.getPayments({
+        customer_id: user.id
+      })
+      
+      if (error) {
+        console.error('Error fetching payments:', error)
+        return
+      }
+      
+      setPayments(data || [])
+      calculateStats(data || [])
     } catch (error) {
       console.error('Error fetching payments:', error)
     } finally {
@@ -105,7 +89,9 @@ export const CustomerPayments = () => {
       const month = format(new Date(p.created_at), 'yyyy-MM')
       monthlyPayments[month] = (monthlyPayments[month] || 0) + p.amount
     })
-    const monthlyAverage = Object.values(monthlyPayments).reduce((a, b) => a + b, 0) / Object.keys(monthlyPayments).length
+    const monthlyAverage = Object.keys(monthlyPayments).length > 0 
+  ? Object.values(monthlyPayments).reduce((a, b) => a + b, 0) / Object.keys(monthlyPayments).length 
+  : 0
     
     // Year to date
     const currentYear = new Date().getFullYear()
@@ -128,8 +114,9 @@ export const CustomerPayments = () => {
     
     if (searchTerm) {
       filtered = filtered.filter(payment =>
-        payment.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        payment.description.toLowerCase().includes(searchTerm.toLowerCase())
+        payment.reference?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        payment.transaction_ref?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        payment.description?.toLowerCase().includes(searchTerm.toLowerCase())
       )
     }
     
@@ -143,25 +130,107 @@ export const CustomerPayments = () => {
   const handlePaymentSubmit = async (e) => {
     e.preventDefault()
     setPaymentLoading(true)
+    setError(null)
     
     try {
-      // Simulate payment processing
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      // Validate amount
+      const amount = parseFloat(paymentForm.amount)
+      if (isNaN(amount) || amount <= 0) {
+        throw new Error('Please enter a valid amount')
+      }
+
+      // Initialize payment with Paystack
+      const paymentData = {
+        amount: amount,
+        customer_id: user.id,
+        email: user.email,
+        description: paymentForm.description,
+        payment_method: paymentForm.paymentMethod,
+        payment_type: 'premium' // or 'deductible' based on context
+      }
+
+      const result = await paymentService.initializePayment(paymentData)
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to initialize payment')
+      }
+
+      // Store payment ID in session storage for callback handling
+      sessionStorage.setItem('pending_payment_id', result.data.payment_id)
       
-      // In a real app, process payment through payment gateway
-      alert('Payment processed successfully!')
-      setShowPaymentModal(false)
-      setPaymentForm({
-        amount: '',
-        paymentMethod: 'card',
-        description: ''
-      })
-      fetchPayments()
+      // Redirect to Paystack payment page
+      window.location.href = result.data.authorization_url
+      
     } catch (error) {
       console.error('Payment error:', error)
-      alert('Payment failed. Please try again.')
-    } finally {
+      setError(error.message || 'Payment failed. Please try again.')
       setPaymentLoading(false)
+    }
+  }
+
+  const handleDownloadReceipt = async (paymentId) => {
+    try {
+      const result = await paymentService.generateReceipt(paymentId)
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to generate receipt')
+      }
+      
+      // Create a simple receipt HTML
+      const receiptHTML = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Payment Receipt - ${result.receipt.reference}</title>
+          <style>
+            body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { text-align: center; margin-bottom: 30px; }
+            .logo { font-size: 24px; font-weight: bold; color: #06b6d4; }
+            .receipt-info { margin: 20px 0; }
+            .receipt-info div { margin: 10px 0; display: flex; justify-content: space-between; }
+            .total { font-size: 20px; font-weight: bold; border-top: 2px solid #ddd; padding-top: 10px; margin-top: 20px; }
+            .footer { text-align: center; margin-top: 40px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="logo">InsuraX</div>
+            <h2>Payment Receipt</h2>
+          </div>
+          
+          <div class="receipt-info">
+            <div><span>Receipt Number:</span> <span>${result.receipt.reference}</span></div>
+            <div><span>Date:</span> <span>${new Date(result.receipt.date).toLocaleDateString()}</span></div>
+            <div><span>Customer:</span> <span>${result.receipt.customer.full_name}</span></div>
+            <div><span>Email:</span> <span>${result.receipt.customer.email}</span></div>
+            <div><span>Payment Method:</span> <span>${result.receipt.method.replace('_', ' ').toUpperCase()}</span></div>
+            <div><span>Description:</span> <span>${result.receipt.description}</span></div>
+            ${result.receipt.claim_number ? `<div><span>Claim Number:</span> <span>${result.receipt.claim_number}</span></div>` : ''}
+            <div class="total"><span>Amount Paid:</span> <span>₦${result.receipt.amount.toLocaleString()}</span></div>
+          </div>
+          
+          <div class="footer">
+            <p>Thank you for your payment!</p>
+            <p>InsuraX - Making Insurance Simple</p>
+          </div>
+        </body>
+        </html>
+      `
+      
+      // Create blob and download
+      const blob = new Blob([receiptHTML], { type: 'text/html' })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `receipt-${result.receipt.reference}.html`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+      
+    } catch (error) {
+      console.error('Receipt download error:', error)
+      alert('Failed to download receipt. Please try again.')
     }
   }
 
@@ -297,16 +366,14 @@ export const CustomerPayments = () => {
                   <Clock className="w-6 h-6 text-amber-400" />
                 </div>
                 {stats.pendingPayments > 0 && (
-                  <div className="animate-pulse">
-                    <div className="w-2 h-2 bg-amber-400 rounded-full"></div>
-                  </div>
+                  <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></div>
                 )}
               </div>
               <p className="text-sm text-gray-400 mb-1">Pending</p>
               <p className="text-2xl font-bold text-white">{formatCurrency(stats.pendingPayments)}</p>
               <div className="flex items-center gap-1 mt-2">
                 <Activity className="w-4 h-4 text-amber-400" />
-                <span className="text-xs text-amber-400">Awaiting processing</span>
+                <span className="text-xs text-amber-400">In progress</span>
               </div>
             </div>
           </CardBody>
@@ -318,14 +385,14 @@ export const CustomerPayments = () => {
             <div className="relative">
               <div className="flex items-center justify-between mb-4">
                 <div className="p-3 bg-blue-500/20 rounded-xl">
-                  <TrendingUp className="w-6 h-6 text-blue-400" />
+                  <Calendar className="w-6 h-6 text-blue-400" />
                 </div>
                 <Zap className="w-5 h-5 text-blue-400" />
               </div>
               <p className="text-sm text-gray-400 mb-1">Monthly Average</p>
               <p className="text-2xl font-bold text-white">{formatCurrency(stats.monthlyAverage)}</p>
               <div className="flex items-center gap-1 mt-2">
-                <Calendar className="w-4 h-4 text-blue-400" />
+                <TrendingUp className="w-4 h-4 text-blue-400" />
                 <span className="text-xs text-blue-400">Per month</span>
               </div>
             </div>
@@ -338,97 +405,70 @@ export const CustomerPayments = () => {
             <div className="relative">
               <div className="flex items-center justify-between mb-4">
                 <div className="p-3 bg-purple-500/20 rounded-xl">
-                  <Calendar className="w-6 h-6 text-purple-400" />
+                  <Receipt className="w-6 h-6 text-purple-400" />
                 </div>
-                <span className="text-xs font-medium text-purple-400 bg-purple-500/20 px-2 py-1 rounded-full">
-                  {new Date().getFullYear()}
-                </span>
+                <ChevronRight className="w-5 h-5 text-purple-400" />
               </div>
               <p className="text-sm text-gray-400 mb-1">Year to Date</p>
               <p className="text-2xl font-bold text-white">{formatCurrency(stats.yearToDate)}</p>
               <div className="flex items-center gap-1 mt-2">
-                <ArrowUpRight className="w-4 h-4 text-purple-400" />
-                <span className="text-xs text-purple-400">Current year</span>
+                <Calendar className="w-4 h-4 text-purple-400" />
+                <span className="text-xs text-purple-400">{new Date().getFullYear()}</span>
               </div>
             </div>
           </CardBody>
         </Card>
       </div>
 
-      {/* Last Payment Alert */}
-      {stats.lastPayment && (
-        <Alert 
-          type="success" 
-          title="Last Payment"
-          className="mb-6 bg-emerald-900/20 border-emerald-500/50"
-        >
-          <div className="flex items-center justify-between">
-            <span>
-              {formatCurrency(stats.lastPayment.amount)} - {stats.lastPayment.description}
-            </span>
-            <span className="text-sm text-emerald-400">
-              {format(new Date(stats.lastPayment.created_at), 'MMM d, yyyy')}
-            </span>
-          </div>
-        </Alert>
-      )}
-
-      {/* Search and Filter */}
-      <Card className="mb-6 bg-gray-800/50 backdrop-blur-sm border-gray-700/50">
-        <CardBody>
-          <div className="flex flex-col sm:flex-row gap-4">
+      {/* Filters and Search */}
+      <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50 mb-6">
+        <CardBody className="p-4">
+          <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                 <Input
                   type="text"
-                  placeholder="Search payments..."
+                  placeholder="Search by reference or description..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 bg-gray-700/50 border-gray-600 text-white placeholder-gray-400 focus:border-cyan-500"
+                  className="pl-10 bg-gray-700/50 border-gray-600"
                 />
               </div>
             </div>
             <Select
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              className="bg-gray-700/50 border-gray-600 text-white"
+              className="md:w-48 bg-gray-700/50 border-gray-600"
             >
               <option value="all">All Payments</option>
               <option value="completed">Completed</option>
               <option value="pending">Pending</option>
               <option value="failed">Failed</option>
             </Select>
-            <Button variant="secondary" className="bg-gray-700/50 hover:bg-gray-700">
-              <Download className="w-4 h-4 mr-2" />
-              Export
-            </Button>
           </div>
         </CardBody>
       </Card>
 
       {/* Payment History */}
       <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50">
-        <div className="px-6 py-5 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/50 to-gray-800/30">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-cyan-500/20 rounded-lg">
-              <Receipt className="w-5 h-5 text-cyan-400" />
-            </div>
-            <h2 className="text-xl font-semibold text-white">Payment History</h2>
-          </div>
-        </div>
-        <CardBody className="p-0">
+        <CardBody>
+          <h3 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
+            <Activity className="w-5 h-5 text-cyan-400" />
+            Payment History
+          </h3>
+          
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-700/50">
-                  <th className="text-left px-6 py-4 text-sm font-medium text-gray-400">Date</th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-gray-400">Reference</th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-gray-400">Description</th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-gray-400">Method</th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-gray-400">Amount</th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-gray-400">Status</th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-gray-400">Action</th>
+                  <th className="text-left py-3 px-6 text-xs font-medium text-gray-400 uppercase tracking-wider">Date</th>
+                  <th className="text-left py-3 px-6 text-xs font-medium text-gray-400 uppercase tracking-wider">Reference</th>
+                  <th className="text-left py-3 px-6 text-xs font-medium text-gray-400 uppercase tracking-wider">Description</th>
+                  <th className="text-left py-3 px-6 text-xs font-medium text-gray-400 uppercase tracking-wider">Method</th>
+                  <th className="text-left py-3 px-6 text-xs font-medium text-gray-400 uppercase tracking-wider">Amount</th>
+                  <th className="text-left py-3 px-6 text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
+                  <th className="text-left py-3 px-6 text-xs font-medium text-gray-400 uppercase tracking-wider">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -452,7 +492,9 @@ export const CustomerPayments = () => {
                           {format(new Date(payment.created_at), 'MMM d, yyyy')}
                         </td>
                         <td className="px-6 py-4">
-                          <span className="text-sm font-medium text-cyan-400">{payment.reference}</span>
+                          <span className="text-sm font-medium text-cyan-400">
+                            {payment.gateway_reference || payment.transaction_ref}
+                          </span>
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-300">{payment.description}</td>
                         <td className="px-6 py-4">
@@ -474,6 +516,8 @@ export const CustomerPayments = () => {
                             variant="ghost" 
                             size="sm"
                             className="opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => handleDownloadReceipt(payment.id)}
+                            disabled={payment.status !== 'completed'}
                           >
                             <Download className="w-4 h-4 mr-1" />
                             Receipt
@@ -493,10 +537,21 @@ export const CustomerPayments = () => {
       {showPaymentModal && (
         <Modal
           isOpen={showPaymentModal}
-          onClose={() => setShowPaymentModal(false)}
+          onClose={() => {
+            setShowPaymentModal(false)
+            setError(null) // Clear error on close
+          }}
           title="Make a Payment"
         >
           <form onSubmit={handlePaymentSubmit} className="space-y-4">
+            {/* Error Alert */}
+            {error && (
+              <Alert variant="error" className="mb-4">
+                <AlertCircle className="w-4 h-4" />
+                <span>{error}</span>
+              </Alert>
+            )}
+
             <Input
               label="Amount (NGN)"
               type="number"
@@ -509,17 +564,18 @@ export const CustomerPayments = () => {
               className="bg-gray-700/50 border-gray-600 text-white"
             />
             
-            <Select
+            <FormSelect
               label="Payment Method"
               value={paymentForm.paymentMethod}
               onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}
+              options={[
+                { value: 'card', label: 'Credit/Debit Card' },
+                { value: 'mobile_money', label: 'Mobile Money' },
+                { value: 'bank_transfer', label: 'Bank Transfer' }
+              ]}
               className="bg-gray-700/50 border-gray-600 text-white"
-            >
-              <option value="card">Credit/Debit Card</option>
-              <option value="mobile_money">Mobile Money</option>
-              <option value="bank_transfer">Bank Transfer</option>
-              <option value="crypto">Cryptocurrency</option>
-            </Select>
+              required
+            />
             
             <Input
               label="Description"
@@ -530,12 +586,21 @@ export const CustomerPayments = () => {
               required
               className="bg-gray-700/50 border-gray-600 text-white"
             />
+
+            {/* Payment Notice */}
+            <Alert variant="info" className="text-sm">
+              <Info className="w-4 h-4" />
+              <span>You will be redirected to Paystack to complete your payment securely.</span>
+            </Alert>
             
             <div className="flex gap-3 pt-4">
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => setShowPaymentModal(false)}
+                onClick={() => {
+                  setShowPaymentModal(false)
+                  setError(null)
+                }}
                 disabled={paymentLoading}
                 className="flex-1"
               >
@@ -548,7 +613,14 @@ export const CustomerPayments = () => {
                 disabled={paymentLoading}
                 className="flex-1 bg-gradient-to-r from-emerald-500 to-green-600"
               >
-                Process Payment
+                {paymentLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  'Process Payment'
+                )}
               </Button>
             </div>
           </form>
