@@ -218,7 +218,7 @@ Contact: +234 805 678 9012`
 
   const processDocument = async () => {
     if (!documentText.trim() && uploadedFiles.length === 0) {
-      setErrorMessage('Please enter some text or upload a document to process.');
+      setErrorMessage('Please provide claim text or upload a document.');
       return;
     }
 
@@ -236,7 +236,7 @@ Contact: +234 805 678 9012`
     const timeoutId = setTimeout(() => {
       setProcessing(false);
       setErrorMessage('Processing timed out. Please try again with a smaller file or check your connection.');
-    }, 120000); // 2 minute timeout
+    }, 60000); // Reduced to 1 minute timeout
 
     try {
       let textToProcess = documentText;
@@ -266,48 +266,59 @@ Contact: +234 805 678 9012`
           
           textToProcess = validTexts.join('\n\n---\n\n') + '\n\n' + documentText;
           console.log('Total text to process:', textToProcess.length, 'characters');
-        } catch (extractionError) {
-          console.error('File extraction failed:', extractionError);
+        } catch (error) {
+          console.error('Text extraction error:', error);
           clearTimeout(timeoutId);
           setProcessing(false);
-          setErrorMessage(`Failed to extract text from files: ${extractionError.message}`);
+          setErrorMessage('Failed to extract text from files. Please try uploading a different format or paste the text manually.');
           return;
         }
       }
 
       console.log('Starting AI processing...');
       const result = await enhancedSystem.processClaimComplete(textToProcess, {
-        generateCustomerResponse: true,
-        customerFriendly: true,
-        userId: user?.id
+        uploadedFiles: uploadedFiles.map(f => ({ name: f.name, type: f.type, size: f.size }))
       });
 
-      clearTimeout(timeoutId); // Clear the timeout on success
+      clearTimeout(timeoutId);
+      console.log('AI processing complete:', result);
 
-      if (result.status === 'completed') {
-        console.log('Processing completed successfully');
-        setCurrentResult(result);
-        
-        // Fetch updated history from database
-        if (user?.id) {
-          try {
-            const historicalClaims = await enhancedSystem.getHistoricalClaims(user.id);
-            setAllClaims(historicalClaims);
-            const analytics = await enhancedSystem.getAnalytics(user.id);
-            setAnalytics(analytics);
-          } catch (dbError) {
-            console.error('Failed to refresh history:', dbError);
-            // Don't fail the whole process if history refresh fails
-          }
-        }
-      } else {
+      if (result.status === 'failed') {
         throw new Error(result.error || 'Processing failed');
       }
+
+      // Update state with results
+      setCurrentResult(result);
+      
+      // Update claims history
+      const newClaim = {
+        ...result,
+        id: result.processingId,
+        created_at: result.timestamp
+      };
+      
+      setAllClaims(prev => [newClaim, ...prev]);
+      
+      // Recalculate analytics
+      const updatedClaims = [newClaim, ...allClaims];
+      const analytics = enhancedSystem.generateAnalytics(updatedClaims);
+      setAnalytics(analytics);
+      
+      // Show success message
+      setErrorMessage('');
+      
+      // Save to database in background (don't wait for it)
+      if (user?.id) {
+        enhancedSystem.saveToDatabase(result, textToProcess).catch(error => {
+          console.error('Failed to save to database:', error);
+          // Don't show error to user since processing succeeded
+        });
+      }
+      
     } catch (error) {
-      clearTimeout(timeoutId);
       console.error('Processing error:', error);
-      setErrorMessage(`Processing failed: ${error.message}`);
-      setCurrentResult(null);
+      clearTimeout(timeoutId);
+      setErrorMessage(error.message || 'An error occurred during processing. Please try again.');
     } finally {
       setProcessing(false);
     }

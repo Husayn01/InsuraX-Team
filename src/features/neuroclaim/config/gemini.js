@@ -36,3 +36,42 @@ const getGeminiConfig = () => {
 
 export const GEMINI_CONFIG = getGeminiConfig();
 export { getGeminiConfig };
+
+// Add this configuration to your gemini.js config file
+export const PROCESSING_CONFIG = {
+  // Reduce the number of sequential API calls
+  enableInternalMemo: false, // Disable internal memo generation for now
+  enableCustomerResponse: true,
+  enableSummary: true,
+  
+  // Add delays between API calls to avoid rate limiting
+  apiCallDelay: 500, // 500ms delay between calls
+  
+  // Timeout settings
+  individualCallTimeout: 15000, // 15 seconds per API call
+  totalProcessingTimeout: 60000, // 1 minute total
+  
+  // Retry settings
+  maxRetries: 2,
+  retryDelay: 1000,
+  
+  // Batch processing settings
+  batchAPICallsWhenPossible: true
+};
+
+// Helper function to add delays between API calls
+export const delayBetweenAPICalls = async (ms = PROCESSING_CONFIG.apiCallDelay) => {
+  return new Promise(resolve => setTimeout(resolve, ms));
+};
+
+// Update your claimsOrchestrator to use these settings:
+// In processClaimComplete method, add delays between API calls:
+
+// After extraction
+await delayBetweenAPICalls();
+
+// After fraud detection
+await delayBetweenAPICalls();
+
+// After categorization
+await delayBetweenAPICalls();

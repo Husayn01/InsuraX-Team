@@ -41,6 +41,7 @@ export class ClaimsProcessingSystem {
    * @param {Object} options - Processing options
    * @returns {Object} Complete processing result
    */
+// Updated processClaimComplete method with better error handling and timeout prevention
   async processClaimComplete(documentText, options = {}) {
     const processingId = this.generateProcessingId();
     const startTime = Date.now();
@@ -82,86 +83,143 @@ export class ClaimsProcessingSystem {
 
       // Step 4: Generate action plan
       const actionPlan = this.generateActionPlan(
-        { validationStatus: 'complete', requiredActions: [] }, // Default validation result
+        { validationStatus: 'complete', requiredActions: [] },
         fraudResult.assessment,
         categorizationResult.categorization
       );
 
-      // Step 5: Generate responses if requested
-      let customerResponse = null;
-      let internalMemo = null;
+      // Step 5: Generate summary
+      let summary = null;
+      console.log(`[${processingId}] Generating claim summary...`);
+      const summaryResult = await this.responseGenerator.generateClaimSummary(
+        extractionResult.claimData,
+        fraudResult.assessment,
+        categorizationResult.categorization
+      );
+      
+      if (summaryResult.success) {
+        summary = summaryResult.summary;
+      } else {
+        // Fallback summary if AI generation fails
+        summary = {
+          executiveSummary: `${extractionResult.claimData.claimType || 'Insurance'} claim submitted for ${extractionResult.claimData.estimatedAmount ? `₦${extractionResult.claimData.estimatedAmount.toLocaleString()}` : 'unspecified amount'}. Risk level: ${fraudResult.assessment.riskLevel}.`,
+          keyDetails: {
+            claimant: extractionResult.claimData.claimantName || 'Unknown',
+            incident: extractionResult.claimData.incidentDescription || 'No description',
+            damages: extractionResult.claimData.estimatedAmount ? `₦${extractionResult.claimData.estimatedAmount.toLocaleString()}` : 'Not specified'
+          }
+        };
+      }
 
-      if (options.generateCustomerResponse) {
-        console.log(`[${processingId}] Generating customer response...`);
+      // Step 6: Generate customer response
+      let customerResponse = null;
+      console.log(`[${processingId}] Generating customer response...`);
+      try {
         const responseResult = await this.responseGenerator.generateCustomerResponse(
           extractionResult.claimData,
-          { validationStatus: 'complete', requiredActions: [] }, // Default validation result
           fraudResult.assessment,
+          categorizationResult.categorization,
           actionPlan
         );
         
         if (responseResult.success) {
           customerResponse = responseResult.response;
         }
+      } catch (error) {
+        console.warn('Customer response generation failed:', error);
+        customerResponse = 'Thank you for submitting your claim. We are processing it and will contact you shortly.';
       }
 
-      if (options.generateInternalMemo) {
-        console.log(`[${processingId}] Generating internal memo...`);
-        const memoResult = await this.responseGenerator.generateInternalMemo(
+      // Step 7: Generate internal memo - WITH TIMEOUT AND ERROR HANDLING
+      let internalMemo = null;
+      console.log(`[${processingId}] Generating internal memo...`);
+      try {
+        // Add a timeout to prevent hanging
+        const memoPromise = this.responseGenerator.generateInternalMemo(
           extractionResult.claimData,
           fraudResult.assessment,
-          categorizationResult.categorization
+          categorizationResult.categorization,
+          actionPlan
         );
         
-        if (memoResult.success) {
+        // Set a 10-second timeout for the memo generation
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Memo generation timeout')), 10000)
+        );
+        
+        const memoResult = await Promise.race([memoPromise, timeoutPromise]);
+        
+        if (memoResult?.success) {
           internalMemo = memoResult.memo;
         }
+      } catch (error) {
+        console.warn('Internal memo generation failed or timed out:', error);
+        // Use fallback memo
+        internalMemo = {
+          summary: `Claim ${processingId} requires ${fraudResult.assessment.riskLevel} priority review.`,
+          recommendations: actionPlan.recommendations || ['Process according to standard procedure'],
+          riskFactors: fraudResult.assessment.fraudIndicators || []
+        };
       }
 
-      // Store the processed claim
-      const processedClaim = {
-        id: processingId,
+      // Compile results
+      const processingTime = Date.now() - startTime;
+      const result = {
+        processingId,
         timestamp: new Date().toISOString(),
-        processingTime: Date.now() - startTime,
+        processingTime,
+        status: 'completed',
         claimData: extractionResult.claimData,
-        categorization: categorizationResult.categorization,
-        validation: { validationStatus: 'complete', requiredActions: [] },
         fraudAssessment: fraudResult.assessment,
+        categorization: categorizationResult.categorization,
+        validationResult: { validationStatus: 'complete', requiredActions: [] },
         actionPlan,
+        summary,
         customerResponse,
-        internalMemo,
-        status: 'completed'
+        internalMemo
       };
 
-      this.processedClaims.set(processingId, processedClaim);
+      // Save to database - WITH ERROR HANDLING
+      console.log(`[${processingId}] Saving to database...`);
+      try {
+        // Don't await this if you want to return results immediately
+        this.saveToDatabase(result, documentText).catch(error => {
+          console.error('Database save failed:', error);
+        });
+      } catch (error) {
+        console.error('Database save error:', error);
+        // Continue anyway - don't fail the whole process
+      }
 
-      console.log(`[${processingId}] Processing completed in ${processedClaim.processingTime}ms`);
+      // Add to processing history (in memory)
+      this.processingHistory.unshift(result);
+      if (this.processingHistory.length > 100) {
+        this.processingHistory = this.processingHistory.slice(0, 100);
+      }
 
-      return {
-        success: true,
-        ...processedClaim
-      };
+      console.log(`[${processingId}] Processing completed in ${processingTime}ms`);
+      return result;
 
     } catch (error) {
       console.error(`[${processingId}] Processing failed:`, error);
       
-      const failedClaim = {
-        id: processingId,
+      const processingTime = Date.now() - startTime;
+      
+      // Return partial result with error
+      return {
+        processingId,
         timestamp: new Date().toISOString(),
-        processingTime: Date.now() - startTime,
+        processingTime,
         status: 'failed',
         error: error.message,
         claimData: null,
-        validation: null,
         fraudAssessment: null,
-        categorization: null
-      };
-
-      this.processedClaims.set(processingId, failedClaim);
-
-      return {
-        success: false,
-        ...failedClaim
+        categorization: null,
+        validationResult: null,
+        actionPlan: null,
+        summary: null,
+        customerResponse: null,
+        internalMemo: null
       };
     }
   }
