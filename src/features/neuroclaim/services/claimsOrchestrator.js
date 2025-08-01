@@ -181,15 +181,14 @@ export class ClaimsProcessingSystem {
 
       // Save to database - WITH ERROR HANDLING
       console.log(`[${processingId}] Saving to database...`);
-      try {
-        // Don't await this if you want to return results immediately
-        this.saveToDatabase(result, documentText).catch(error => {
-          console.error('Database save failed:', error);
-        });
-      } catch (error) {
-        console.error('Database save error:', error);
-        // Continue anyway - don't fail the whole process
-      }
+      if (options.userId) {
+          try {
+            await this.saveToDatabase(result, options.userId, documentText);
+          } catch (error) {
+            console.error('Database save failed:', error);
+            // Continue anyway - don't fail the whole process
+          }
+        }
 
       // Add to processing history (in memory)
       this.processingHistory.unshift(result);
@@ -707,37 +706,44 @@ async processClaimComplete(documentText, options = {}) {
   }
 }
 
-// Add this new method to save to database
+// In claimsOrchestrator.js, replace the saveToDatabase method with:
 async saveToDatabase(processedClaim, userId, extractedText) {
   try {
-    const { supabase } = await import('../../../services/supabase.js');
+    // Use the already imported supabaseHelpers instead of dynamic import
+    const { supabaseHelpers } = await import('../../../services/supabase.js');
     
-    const { data, error } = await supabase
-      .from('neuroclaim_sessions')
-      .insert({
-        user_id: userId,
-        processing_id: processedClaim.id,
-        claim_data: processedClaim.claimData,
-        fraud_assessment: processedClaim.fraudAssessment,
-        categorization: processedClaim.categorization,
-        validation: processedClaim.validation,
-        action_plan: processedClaim.actionPlan,
-        summary: processedClaim.summary,
-        customer_response: processedClaim.customerResponse,
-        internal_memo: processedClaim.internalMemo,
-        processing_time_ms: processedClaim.processingTime,
-        status: processedClaim.status,
-        extracted_text: extractedText,
-        uploaded_files: [] // Add file metadata if needed
-      });
+    const sessionData = {
+      user_id: userId,
+      processing_id: processedClaim.processingId || processedClaim.id,
+      claim_data: processedClaim.claimData || {},
+      fraud_assessment: processedClaim.fraudAssessment || {},
+      categorization: processedClaim.categorization || {},
+      validation: processedClaim.validationResult || processedClaim.validation || {},
+      action_plan: processedClaim.actionPlan || {},
+      summary: processedClaim.summary || {},
+      customer_response: processedClaim.customerResponse || '',
+      internal_memo: processedClaim.internalMemo || {},
+      processing_time_ms: processedClaim.processingTime || 0,
+      status: processedClaim.status || 'completed',
+      extracted_text: extractedText || '',
+      uploaded_files: processedClaim.uploadedFiles || []
+    };
 
-    if (error) {
-      console.error('Failed to save to database:', error);
+    console.log('Saving NeuroClaim session:', sessionData);
+    
+    const result = await supabaseHelpers.createNeuroClaimSession(sessionData);
+    
+    if (result.error) {
+      console.error('Failed to save to database:', result.error);
+      throw result.error;
     } else {
-      console.log('Successfully saved to database');
+      console.log('Successfully saved to database:', result.data);
     }
+    
+    return result;
   } catch (error) {
     console.error('Database save error:', error);
+    throw error;
   }
 }
 

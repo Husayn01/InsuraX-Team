@@ -277,7 +277,8 @@ Contact: +234 805 678 9012`
 
       console.log('Starting AI processing...');
       const result = await enhancedSystem.processClaimComplete(textToProcess, {
-        uploadedFiles: uploadedFiles.map(f => ({ name: f.name, type: f.type, size: f.size }))
+        uploadedFiles: uploadedFiles.map(f => ({ name: f.name, type: f.type, size: f.size })),
+        userId: user?.id
       });
 
       clearTimeout(timeoutId);
@@ -309,7 +310,7 @@ Contact: +234 805 678 9012`
       
       // Save to database in background (don't wait for it)
       if (user?.id) {
-        enhancedSystem.saveToDatabase(result, textToProcess).catch(error => {
+        enhancedSystem.saveToDatabase(result, user.id, textToProcess).catch(error => {
           console.error('Failed to save to database:', error);
           // Don't show error to user since processing succeeded
         });
