@@ -165,7 +165,7 @@ Itemized Charges:
 - Medications: ₦120,000
 - Lab Tests: ₦180,000
 
-Total Charges: ₦4,000,000
+Total Estimate: ₦4,000,000
 
 Insurance Information:
 Primary Insurance: NaijaHealth Insurance
@@ -615,7 +615,7 @@ Contact: +234 805 678 9012`
                       { label: 'Claim Number', value: currentResult.claimData?.claimNumber || 'Not found', icon: Hash },
                       { label: 'Claimant', value: currentResult.claimData?.claimantName || 'Not found', icon: User },
                       { label: 'Type', value: currentResult.claimData?.claimType || 'Unknown', icon: Tag },
-                      { label: 'Amount', value: formatCurrency(claim.claimData?.estimatedAmount || claim.claim_data?.estimatedAmount || 0), icon: NairaIcon },
+                      { label: 'Amount', value: formatCurrency(currentResult.claimData?.estimatedAmount || 0), icon: NairaIcon },
                       { label: 'Date of Incident', value: currentResult.claimData?.dateOfIncident || 'Not found', icon: Calendar },
                       { label: 'Location', value: currentResult.claimData?.incidentLocation || 'Not found', icon: MapPin }
                     ].map((item, index) => (
@@ -1157,7 +1157,7 @@ Contact: +234 805 678 9012`
       </div>
 
       {/* Add custom styles */}
-      <style jsx>{`
+      <style>{`
         @keyframes float {
           0%, 100% { transform: translateY(0px); }
           50% { transform: translateY(-20px); }
