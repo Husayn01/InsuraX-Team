@@ -9,6 +9,7 @@ import {
   Info, FileImage, FileType, Bot, Car, Heart, Home,
   Hash, User, Tag, Calendar, MapPin
 } from 'lucide-react';
+import { NairaIcon } from '@shared/components'
 import { Alert, Button, Badge, Card, CardBody, LoadingSpinner } from '@shared/components';
 import { geminiClient } from '../utils/geminiClient';
 import { ClaimsProcessingSystem} from '../services/claimsOrchestrator';
@@ -591,7 +592,7 @@ Contact: +234 805 678 9012`
                       { label: 'Claim Number', value: currentResult.claimData?.claimNumber || 'Not found', icon: Hash },
                       { label: 'Claimant', value: currentResult.claimData?.claimantName || 'Not found', icon: User },
                       { label: 'Type', value: currentResult.claimData?.claimType || 'Unknown', icon: Tag },
-                      { label: 'Amount', value: formatCurrency(currentResult.claimData?.estimatedAmount || 0), icon: DollarSign },
+                      { label: 'Amount', value: formatCurrency(currentResult.claimData?.estimatedAmount || 0), icon: NairaIcon },
                       { label: 'Date of Incident', value: currentResult.claimData?.dateOfIncident || 'Not found', icon: Calendar },
                       { label: 'Location', value: currentResult.claimData?.incidentLocation || 'Not found', icon: MapPin }
                     ].map((item, index) => (

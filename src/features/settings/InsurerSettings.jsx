@@ -9,6 +9,7 @@ import {
   Smartphone, Monitor, Calendar, BarChart3, Sparkles, 
   Upload, Camera, FileText, Brain, AlertTriangle, X
 } from 'lucide-react'
+import { NairaIcon } from '@shared/components'
 import { useAuth } from '@contexts/AuthContext'
 import { DashboardLayout, PageHeader } from '@shared/layouts'
 import { 
@@ -362,7 +363,7 @@ export const InsurerSettings = () => {
                   Claim Approval Limit (NGN)
                 </label>
                 <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <NairaIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                   <Input
                     type="number"
                     value={businessSettings.claimApprovalLimit}

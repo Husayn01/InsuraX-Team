@@ -110,6 +110,12 @@ JSON output:`;
   // Description cleaning
   cleaned.incidentDescription = this.cleanString(data.incidentDescription);
 
+    
+  // Amount validation - CHECK BOTH FIELDS
+  // First try to get claimAmount, then estimatedAmount, then use whichever is valid
+  const claimAmount = this.parseAmount(data.claimAmount);
+  const estimatedAmount = this.parseAmount(data.estimatedAmount);
+  
   // Amount validation - CHANGED FIELD NAME
   cleaned.estimatedAmount = this.parseAmount(data.estimatedAmount);
 
