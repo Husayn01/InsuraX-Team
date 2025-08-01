@@ -199,6 +199,7 @@ export class ClaimsProcessingSystem {
     }
   }
 
+
   async extractFromTextFile(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -493,4 +494,276 @@ async extractFromImage(file) {
       this.tesseractWorker = null;
     }
   }
+
+  // Add this method to the ClaimsProcessingSystem class in claimsOrchestrator.js
+
+async processClaimComplete(documentText, options = {}) {
+  const processingId = this.generateProcessingId();
+  const startTime = Date.now();
+
+  try {
+    console.log(`[${processingId}] Starting claim processing...`);
+
+    // Step 1: Extract claim information
+    console.log(`[${processingId}] Extracting claim information...`);
+    const extractionResult = await this.documentProcessor.extractClaimInformation(documentText);
+    
+    if (!extractionResult.success) {
+      throw new Error(extractionResult.error || 'Document extraction failed');
+    }
+
+    // Step 2: Detect fraud
+    console.log(`[${processingId}] Running fraud detection...`);
+    const fraudResult = await this.fraudDetector.assessFraudRisk(extractionResult.claimData);
+    
+    if (!fraudResult.success) {
+      console.warn('Fraud detection failed, using default low risk');
+      fraudResult.assessment = {
+        riskLevel: 'low',
+        riskScore: 0,
+        confidence: 'low'
+      };
+    }
+
+    // Step 3: Categorize the claim with fraud assessment
+    console.log(`[${processingId}] Categorizing claim...`);
+    const categorizationResult = await this.claimCategorizer.categorizeAndPrioritize(
+      extractionResult.claimData,
+      fraudResult.assessment
+    );
+    
+    if (!categorizationResult.success) {
+      throw new Error(categorizationResult.error || 'Categorization failed');
+    }
+
+    // Step 4: Generate action plan
+    const actionPlan = this.generateActionPlan(
+      { validationStatus: 'complete', requiredActions: [] },
+      fraudResult.assessment,
+      categorizationResult.categorization
+    );
+
+    // Step 5: Generate summary - NEW!
+    let summary = null;
+    console.log(`[${processingId}] Generating claim summary...`);
+    const summaryResult = await this.responseGenerator.generateClaimSummary(
+      extractionResult.claimData,
+      fraudResult.assessment,
+      categorizationResult.categorization
+    );
+    
+    if (summaryResult.success) {
+      summary = summaryResult.summary;
+    } else {
+      // Fallback summary if AI generation fails
+      summary = {
+        executiveSummary: `${extractionResult.claimData.claimType || 'Insurance'} claim submitted for ${extractionResult.claimData.estimatedAmount ? `₦${extractionResult.claimData.estimatedAmount.toLocaleString()}` : 'unspecified amount'}. Risk level: ${fraudResult.assessment.riskLevel}.`,
+        keyDetails: {
+          claimant: extractionResult.claimData.claimantName || 'Unknown',
+          incident: extractionResult.claimData.incidentDescription || 'No description',
+          damages: extractionResult.claimData.estimatedAmount ? `₦${extractionResult.claimData.estimatedAmount.toLocaleString()}` : 'Not specified',
+          riskFactors: fraudResult.assessment.riskFactors?.join(', ') || 'None identified'
+        },
+        processingStatus: categorizationResult.categorization.priority,
+        recommendations: actionPlan.recommendations || [],
+        timeline: actionPlan.estimatedTimeline || 'Standard processing',
+        specialNotes: actionPlan.specialHandling || 'No special considerations'
+      };
+    }
+
+    // Step 6: Generate responses if requested
+    let customerResponse = null;
+    let internalMemo = null;
+
+    if (options.generateCustomerResponse) {
+      console.log(`[${processingId}] Generating customer response...`);
+      const responseResult = await this.responseGenerator.generateCustomerResponse(
+        extractionResult.claimData,
+        { validationStatus: 'complete', requiredActions: [] },
+        fraudResult.assessment,
+        actionPlan
+      );
+      
+      if (responseResult.success) {
+        customerResponse = responseResult.response;
+      }
+    }
+
+    if (options.generateInternalMemo) {
+      console.log(`[${processingId}] Generating internal memo...`);
+      const memoResult = await this.responseGenerator.generateInternalMemo(
+        extractionResult.claimData,
+        fraudResult.assessment,
+        categorizationResult.categorization
+      );
+      
+      if (memoResult.success) {
+        internalMemo = memoResult.memo;
+      }
+    }
+
+    // Step 7: Store the processed claim
+    const processedClaim = {
+      id: processingId,
+      timestamp: new Date().toISOString(),
+      processingTime: Date.now() - startTime,
+      claimData: extractionResult.claimData,
+      categorization: categorizationResult.categorization,
+      validation: { validationStatus: 'complete', requiredActions: [] },
+      fraudAssessment: fraudResult.assessment,
+      actionPlan,
+      summary, // NEW!
+      customerResponse,
+      internalMemo,
+      status: 'completed'
+    };
+
+    this.processedClaims.set(processingId, processedClaim);
+
+    // Step 8: Save to database if user is authenticated - NEW!
+    if (options.userId) {
+      await this.saveToDatabase(processedClaim, options.userId, documentText);
+    }
+
+    console.log(`[${processingId}] Processing completed in ${processedClaim.processingTime}ms`);
+
+    return {
+      success: true,
+      ...processedClaim
+    };
+
+  } catch (error) {
+    console.error(`[${processingId}] Processing failed:`, error);
+    
+    const failedClaim = {
+      id: processingId,
+      timestamp: new Date().toISOString(),
+      processingTime: Date.now() - startTime,
+      status: 'failed',
+      error: error.message
+    };
+    
+    this.processedClaims.set(processingId, failedClaim);
+    
+    return failedClaim;
+  }
+}
+
+// Add this new method to save to database
+async saveToDatabase(processedClaim, userId, extractedText) {
+  try {
+    const { supabase } = await import('../../../services/supabase.js');
+    
+    const { data, error } = await supabase
+      .from('neuroclaim_sessions')
+      .insert({
+        user_id: userId,
+        processing_id: processedClaim.id,
+        claim_data: processedClaim.claimData,
+        fraud_assessment: processedClaim.fraudAssessment,
+        categorization: processedClaim.categorization,
+        validation: processedClaim.validation,
+        action_plan: processedClaim.actionPlan,
+        summary: processedClaim.summary,
+        customer_response: processedClaim.customerResponse,
+        internal_memo: processedClaim.internalMemo,
+        processing_time_ms: processedClaim.processingTime,
+        status: processedClaim.status,
+        extracted_text: extractedText,
+        uploaded_files: [] // Add file metadata if needed
+      });
+
+    if (error) {
+      console.error('Failed to save to database:', error);
+    } else {
+      console.log('Successfully saved to database');
+    }
+  } catch (error) {
+    console.error('Database save error:', error);
+  }
+}
+
+// Add these methods for fetching from database
+async getHistoricalClaims(userId, limit = 50) {
+  try {
+    const { supabase } = await import('../../../services/supabase.js');
+    
+    const { data, error } = await supabase
+      .from('neuroclaim_sessions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+    
+    return data || [];
+  } catch (error) {
+    console.error('Failed to fetch historical claims:', error);
+    return [];
+  }
+}
+
+async getAnalytics(userId) {
+  try {
+    const { supabase } = await import('../../../services/supabase.js');
+    
+    // Get all claims for analytics
+    const { data: claims, error } = await supabase
+      .from('neuroclaim_sessions')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('status', 'completed');
+
+    if (error) throw error;
+
+    // Calculate analytics
+    const totalClaims = claims.length;
+    const totalAmount = claims.reduce((sum, claim) => 
+      sum + (claim.claim_data?.estimatedAmount || 0), 0
+    );
+    
+    const riskDistribution = {
+      high: claims.filter(c => c.fraud_assessment?.riskLevel === 'high').length,
+      medium: claims.filter(c => c.fraud_assessment?.riskLevel === 'medium').length,
+      low: claims.filter(c => c.fraud_assessment?.riskLevel === 'low').length
+    };
+
+    const averageProcessingTime = claims.reduce((sum, claim) => 
+      sum + claim.processing_time_ms, 0
+    ) / totalClaims || 0;
+
+    const claimTypes = claims.reduce((acc, claim) => {
+      const type = claim.claim_data?.claimType || 'unknown';
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+    }, {});
+
+    return {
+      totalClaims,
+      totalAmount,
+      riskDistribution,
+      averageProcessingTime,
+      claimTypes,
+      processingTrend: this.calculateProcessingTrend(claims)
+    };
+  } catch (error) {
+    console.error('Failed to generate analytics:', error);
+    return this.generateAnalytics(); // Fallback to in-memory
+  }
+}
+
+calculateProcessingTrend(claims) {
+  // Group by date
+  const trend = claims.reduce((acc, claim) => {
+    const date = new Date(claim.created_at).toLocaleDateString();
+    acc[date] = (acc[date] || 0) + 1;
+    return acc;
+  }, {});
+
+  return Object.entries(trend).map(([date, count]) => ({
+    date,
+    count
+  })).sort((a, b) => new Date(a.date) - new Date(b.date));
+}
 }

@@ -13,7 +13,9 @@ import { NairaIcon } from '@shared/components'
 import { Alert, Button, Badge, Card, CardBody, LoadingSpinner } from '@shared/components';
 import { geminiClient } from '../utils/geminiClient';
 import { ClaimsProcessingSystem} from '../services/claimsOrchestrator';
-import { GEMINI_CONFIG } from '../config/gemini';
+import { GEMINI_CONFIG } from '../config/gemini'
+import { useAuth } from '@contexts/AuthContext';
+import { format } from 'date-fns';
 
 export const ClaimsProcessing = () => {
   const [documentText, setDocumentText] = useState('');
@@ -28,6 +30,7 @@ export const ClaimsProcessing = () => {
   const [allClaims, setAllClaims] = useState([]);
   const [analytics, setAnalytics] = useState(null);
   const [selectedClaim, setSelectedClaim] = useState(null);
+  const { user } = useAuth();
   const [isLoaded, setIsLoaded] = useState(false);
   const [expandedSections, setExpandedSections] = useState({
     extraction: true,
@@ -39,44 +42,60 @@ export const ClaimsProcessing = () => {
 
   // Initialize the enhanced orchestrator
   const enhancedSystem = new ClaimsProcessingSystem();
+  const loadHistoricalData = async () => {
+    try {
+      const historicalClaims = await enhancedSystem.getHistoricalClaims(user.id);
+      setAllClaims(historicalClaims);
+      const analytics = await enhancedSystem.getAnalytics(user.id);
+      setAnalytics(analytics);
+    } catch (error) {
+      console.error('Failed to load historical data:', error);
+    }
+  };
 
   useEffect(() => {
-    const checkApiKey = async () => {
-      try {
-        setApiKeyStatus('checking');
-        
-        const hasApiKey = GEMINI_CONFIG.apiKey && 
-                         GEMINI_CONFIG.apiKey !== 'YOUR_API_KEY_HERE' && 
-                         !GEMINI_CONFIG.apiKey.includes('YOUR')
-        
-        if (!hasApiKey) {
-          setApiKeyStatus('missing');
-          setErrorMessage('Gemini API key not found. For demo purposes, you can view the interface without AI processing.');
-          return;
-        }
-
-        // Test the connection
-        setIsTestingConnection(true);
-        const testResult = await geminiClient.testConnection();
-        setIsTestingConnection(false);
-
-        if (testResult.success) {
-          setApiKeyStatus('configured');
-          setErrorMessage('');
-        } else {
-          setApiKeyStatus('error');
-          setErrorMessage(testResult.error || 'Failed to connect to Gemini API');
-        }
-      } catch (error) {
-        setApiKeyStatus('error');
-        setErrorMessage(error.message || 'Error checking API connection');
-        setIsTestingConnection(false);
+  const checkApiKey = async () => {
+    try {
+      setApiKeyStatus('checking');
+      
+      const hasApiKey = GEMINI_CONFIG.apiKey && 
+                       GEMINI_CONFIG.apiKey !== 'YOUR_API_KEY_HERE' && 
+                       !GEMINI_CONFIG.apiKey.includes('YOUR')
+      
+      if (!hasApiKey) {
+        setApiKeyStatus('missing');
+        setErrorMessage('Gemini API key not found. For demo purposes, you can view the interface without AI processing.');
+        return;
       }
-    };
 
-    checkApiKey();
-    setIsLoaded(true);
-  }, []);
+      // Test the connection
+      setIsTestingConnection(true);
+      const testResult = await geminiClient.testConnection();
+      setIsTestingConnection(false);
+
+      if (testResult.success) {
+        setApiKeyStatus('configured');
+        setErrorMessage('');
+      } else {
+        setApiKeyStatus('error');
+        setErrorMessage(testResult.error || 'Failed to connect to Gemini API');
+      }
+    } catch (error) {
+      setApiKeyStatus('error');
+      setErrorMessage(error.message || 'Error checking API connection');
+      setIsTestingConnection(false);
+    }
+  };
+
+  // Check API key
+  checkApiKey();
+  setIsLoaded(true);
+  
+  // Load historical data if user is authenticated
+  if (user?.id) {
+    loadHistoricalData();
+  }
+}, [user]);
 
   const sampleDocuments = [
     {
@@ -199,13 +218,12 @@ Contact: +234 805 678 9012`
 
   const processDocument = async () => {
     if (!documentText.trim() && uploadedFiles.length === 0) {
-      setErrorMessage('Please enter claim text or upload a document');
-      setTimeout(() => setErrorMessage(''), 5000);
+      setErrorMessage('Please enter some text or upload a document to process.');
       return;
     }
 
     if (apiKeyStatus !== 'configured') {
-      setErrorMessage('This is a demo version. To use AI processing, please configure your Gemini API key.');
+      setErrorMessage('API key not configured. To use AI processing, please configure your Gemini API key.');
       setTimeout(() => setErrorMessage(''), 5000);
       return;
     }
@@ -227,14 +245,19 @@ Contact: +234 805 678 9012`
 
       const result = await enhancedSystem.processClaimComplete(textToProcess, {
         generateCustomerResponse: true,
-        customerFriendly: true
+        customerFriendly: true,
+        userId: user?.id // Pass user ID for database storage
       });
 
       if (result.status === 'completed') {
         setCurrentResult(result);
-        const claims = enhancedSystem.getAllClaims();
-        setAllClaims(claims);
-        updateAnalytics();
+        // Fetch updated history from database
+        if (user?.id) {
+          const historicalClaims = await enhancedSystem.getHistoricalClaims(user.id);
+          setAllClaims(historicalClaims);
+          const analytics = await enhancedSystem.getAnalytics(user.id);
+          setAnalytics(analytics);
+        }
       } else {
         throw new Error(result.error || 'Processing failed');
       }
@@ -592,7 +615,7 @@ Contact: +234 805 678 9012`
                       { label: 'Claim Number', value: currentResult.claimData?.claimNumber || 'Not found', icon: Hash },
                       { label: 'Claimant', value: currentResult.claimData?.claimantName || 'Not found', icon: User },
                       { label: 'Type', value: currentResult.claimData?.claimType || 'Unknown', icon: Tag },
-                      { label: 'Amount', value: formatCurrency(currentResult.claimData?.estimatedAmount || 0), icon: NairaIcon },
+                      { label: 'Amount', value: formatCurrency(claim.claimData?.estimatedAmount || claim.claim_data?.estimatedAmount || 0), icon: NairaIcon },
                       { label: 'Date of Incident', value: currentResult.claimData?.dateOfIncident || 'Not found', icon: Calendar },
                       { label: 'Location', value: currentResult.claimData?.incidentLocation || 'Not found', icon: MapPin }
                     ].map((item, index) => (
@@ -706,215 +729,198 @@ Contact: +234 805 678 9012`
             </Card>
 
             {/* Summary & Next Steps */}
-            {currentResult.summary && (
-              <Card className={`bg-gray-800/50 backdrop-blur-sm border-gray-700/50 transition-all duration-300 ${expandedSections.summary ? 'hover:shadow-xl' : ''}`}>
-                <div 
-                  className="px-6 py-4 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/50 to-gray-800/30 cursor-pointer"
-                  onClick={() => toggleSection('summary')}
-                >
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold text-white flex items-center gap-3">
-                      <div className="p-2 bg-purple-500/20 rounded-lg">
-                        <FileCheck className="w-5 h-5 text-purple-400" />
-                      </div>
-                      Executive Summary
-                    </h3>
-                    {expandedSections.summary ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
-                  </div>
-                </div>
-                {expandedSections.summary && (
-                  <CardBody className="p-6">
-                    <div className="prose prose-invert max-w-none">
-                      <p className="text-gray-300 leading-relaxed">{currentResult.summary.executiveSummary}</p>
-                      
-                      {currentResult.summary.timeline && (
-                        <div className="mt-4 p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg">
-                          <p className="text-sm text-purple-300">
-                            <Clock className="w-4 h-4 inline mr-2" />
-                            Expected Timeline: {currentResult.summary.timeline}
-                          </p>
-                        </div>
-                      )}
-
-                      {currentResult.actionPlan?.length > 0 && (
-                        <div className="mt-6">
-                          <h4 className="text-lg font-semibold text-white mb-4">Action Plan</h4>
-                          <div className="space-y-3">
-                            {currentResult.actionPlan.map((action, index) => (
-                              <div key={index} className="flex items-start gap-3 p-4 bg-gray-700/50 rounded-lg border border-gray-600">
-                                <div className={`p-2 rounded-lg ${
-                                  action.priority === 'urgent' ? 'bg-red-500/20' :
-                                  action.priority === 'high' ? 'bg-orange-500/20' :
-                                  'bg-blue-500/20'
-                                }`}>
-                                  <Zap className={`w-4 h-4 ${
-                                    action.priority === 'urgent' ? 'text-red-400' :
-                                    action.priority === 'high' ? 'text-orange-400' :
-                                    'text-blue-400'
-                                  }`} />
-                                </div>
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <p className="font-medium text-white">{action.action}</p>
-                                    <Badge className={`text-xs ${
-                                      action.priority === 'urgent' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
-                                      action.priority === 'high' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' :
-                                      'bg-blue-500/20 text-blue-400 border-blue-500/30'
-                                    }`}>
-                                      {action.priority}
-                                    </Badge>
-                                  </div>
-                                  <ul className="text-sm text-gray-400 space-y-1">
-                                    {action.details?.map((detail, idx) => (
-                                      <li key={idx} className="flex items-start gap-2">
-                                        <span className="text-gray-500 mt-0.5">•</span>
-                                        <span>{detail}</span>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </CardBody>
-                )}
-              </Card>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
-  const renderHistoryTab = () => (
-    <div className="space-y-6">
-      {allClaims.length === 0 ? (
-        <div className="text-center py-16">
-          <div className="relative inline-flex mb-6">
-            <div className="absolute inset-0 bg-cyan-500 blur-3xl opacity-20"></div>
-            <div className="relative p-6 bg-gradient-to-br from-cyan-500/20 to-blue-500/20 rounded-2xl border border-cyan-500/30">
-              <Database className="w-12 h-12 text-cyan-400" />
-            </div>
-          </div>
-          <h3 className="text-xl font-medium text-gray-300 mb-2">No claims processed yet</h3>
-          <p className="text-gray-500">Process your first claim to see it here</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-semibold text-white">Processing History</h3>
-            <Badge className="bg-gray-700 text-gray-300 border-gray-600">
-              {allClaims.length} claims
-            </Badge>
-          </div>
-
-          {allClaims.map((claim, index) => (
-            <Card 
-              key={claim.processingId} 
-              className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50 hover:shadow-xl transition-all duration-300 cursor-pointer"
-              onClick={() => setSelectedClaim(claim)}
-            >
-              <CardBody className="p-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-3">
-                      <Badge className={`
-                        ${claim.status === 'completed' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}
-                      `}>
-                        {claim.status === 'completed' ? <CheckCircle className="w-3 h-3 mr-1" /> : <X className="w-3 h-3 mr-1" />}
-                        {claim.status}
-                      </Badge>
-                      
-                      <Badge className={`
-                        ${claim.fraudAssessment?.riskLevel === 'low' ? 'bg-green-500/20 text-green-400 border-green-500/30' :
-                        claim.fraudAssessment?.riskLevel === 'medium' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' :
-                        claim.fraudAssessment?.riskLevel === 'high' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' :
-                        'bg-red-500/20 text-red-400 border-red-500/30'}
-                      `}>
-                        <Shield className="w-3 h-3 mr-1" />
-                        {claim.fraudAssessment?.riskLevel || 'unknown'} risk
-                      </Badge>
-                    </div>
-                    
-                    <h4 className="font-semibold text-white text-lg mb-1">
-                      {claim.claimData?.claimNumber || claim.processingId}
-                    </h4>
-                    <p className="text-sm text-gray-400">
-                      {claim.claimData?.claimantName || 'Unknown'} • 
-                      {claim.claimData?.claimType || 'Unknown type'} • 
-                      {formatCurrency(claim.claimData?.estimatedAmount || 0)}
-                    </p>
-                  </div>
-                  
-                  <div className="text-right">
-                    <p className="text-sm text-gray-500">
-                      {new Date(claim.timestamp).toLocaleDateString()}
-                    </p>
-                    <p className="text-xs text-gray-600 mt-1">
-                      {claim.processingTimeMs ? `${(claim.processingTimeMs / 1000).toFixed(1)}s` : 'N/A'}
-                    </p>
-                  </div>
-                </div>
-              </CardBody>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {/* Claim Detail Modal */}
-      {selectedClaim && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-800 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
-            <div className="sticky top-0 bg-gray-800 p-6 border-b border-gray-700 flex justify-between items-center">
-              <h2 className="text-2xl font-bold text-white">
-                Claim Details: {selectedClaim.claimData?.claimNumber || 'Unknown'}
-              </h2>
-              <button
-                onClick={() => setSelectedClaim(null)}
-                className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+          {currentResult.summary && (
+            <Card className={`bg-gray-800/50 backdrop-blur-sm border-gray-700/50 transition-all duration-300 ${expandedSections.summary ? 'hover:shadow-xl' : ''}`}>
+              <div 
+                className="px-6 py-4 border-b border-gray-700/50 bg-gradient-to-r from-gray-800/50 to-gray-800/30 cursor-pointer"
+                onClick={() => toggleSection('summary')}
               >
-                <X className="w-6 h-6 text-gray-400" />
-              </button>
-            </div>
-            
-            <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(90vh-88px)]">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="font-semibold text-cyan-400 mb-3">Extracted Data</h3>
-                  <pre className="bg-gray-900/50 p-4 rounded-xl text-xs text-gray-300 overflow-x-auto border border-gray-700">
-                    {JSON.stringify(selectedClaim.claimData, null, 2)}
-                  </pre>
-                </div>
-                <div>
-                  <h3 className="font-semibold text-red-400 mb-3">Fraud Assessment</h3>
-                  <pre className="bg-gray-900/50 p-4 rounded-xl text-xs text-gray-300 overflow-x-auto border border-gray-700">
-                    {JSON.stringify(selectedClaim.fraudAssessment, null, 2)}
-                  </pre>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-white flex items-center gap-3">
+                    <div className="p-2 bg-purple-500/20 rounded-lg">
+                      <FileText className="w-5 h-5 text-purple-400" />
+                    </div>
+                    AI-Generated Summary
+                  </h3>
+                  {expandedSections.summary ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
                 </div>
               </div>
               
-              {selectedClaim.validation && (
-                <div>
-                  <h3 className="font-semibold text-blue-400 mb-3">Validation Results</h3>
-                  <pre className="bg-gray-900/50 p-4 rounded-xl text-xs text-gray-300 overflow-x-auto border border-gray-700">
-                    {JSON.stringify(selectedClaim.validation, null, 2)}
-                  </pre>
-                </div>
+              {expandedSections.summary && (
+                <CardBody>
+                  <div className="space-y-4">
+                    {/* Executive Summary */}
+                    <div className="p-4 bg-gradient-to-r from-purple-900/20 to-pink-900/20 rounded-xl border border-purple-500/20">
+                      <h4 className="text-sm font-medium text-purple-300 mb-2">Executive Summary</h4>
+                      <p className="text-white">{currentResult.summary.executiveSummary}</p>
+                    </div>
+
+                    {/* Key Details Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-400 mb-3">Key Details</h4>
+                        <div className="space-y-2">
+                          <div className="flex justify-between py-2 border-b border-gray-700/50">
+                            <span className="text-gray-400">Claimant</span>
+                            <span className="text-white font-medium">{currentResult.summary.keyDetails.claimant}</span>
+                          </div>
+                          <div className="flex justify-between py-2 border-b border-gray-700/50">
+                            <span className="text-gray-400">Incident</span>
+                            <span className="text-white font-medium">{currentResult.summary.keyDetails.incident}</span>
+                          </div>
+                          <div className="flex justify-between py-2 border-b border-gray-700/50">
+                            <span className="text-gray-400">Damages</span>
+                            <span className="text-white font-medium">{currentResult.summary.keyDetails.damages}</span>
+                          </div>
+                          <div className="flex justify-between py-2">
+                            <span className="text-gray-400">Risk Factors</span>
+                            <span className="text-white font-medium">{currentResult.summary.keyDetails.riskFactors}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-400 mb-3">Processing Info</h4>
+                        <div className="space-y-3">
+                          <div className="p-3 bg-gray-700/30 rounded-lg">
+                            <p className="text-xs text-gray-400 mb-1">Status</p>
+                            <p className="text-white font-medium">{currentResult.summary.processingStatus}</p>
+                          </div>
+                          <div className="p-3 bg-gray-700/30 rounded-lg">
+                            <p className="text-xs text-gray-400 mb-1">Timeline</p>
+                            <p className="text-white font-medium">{currentResult.summary.timeline}</p>
+                          </div>
+                          {currentResult.summary.specialNotes && (
+                            <div className="p-3 bg-amber-900/20 rounded-lg border border-amber-500/20">
+                              <p className="text-xs text-amber-400 mb-1">Special Notes</p>
+                              <p className="text-amber-200 text-sm">{currentResult.summary.specialNotes}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Recommendations */}
+                    {currentResult.summary.recommendations?.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-400 mb-3">AI Recommendations</h4>
+                        <div className="space-y-2">
+                          {currentResult.summary.recommendations.map((rec, index) => (
+                            <div key={index} className="flex items-start gap-3 p-3 bg-cyan-900/20 rounded-lg border border-cyan-500/20">
+                              <CheckCircle className="w-4 h-4 text-cyan-400 mt-0.5" />
+                              <p className="text-sm text-cyan-100">{rec}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </CardBody>
               )}
-            </div>
+            </Card>
+          )}
+
           </div>
         </div>
       )}
     </div>
   );
+
+  const renderHistoryTab = () => {
+    const displayClaims = allClaims.length > 0 ? allClaims : Array.from(enhancedSystem.getAllClaims());
+    
+    return (
+      <div className="space-y-6">
+        {displayClaims.length === 0 ? (
+          <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50">
+            <CardBody className="text-center py-12">
+              <Clock className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-gray-400 mb-2">No Processing History</h3>
+              <p className="text-gray-500">Your processed claims will appear here</p>
+            </CardBody>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {displayClaims.map((claim, index) => (
+              <Card 
+                key={claim.id || index} 
+                className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50 hover:border-cyan-500/50 transition-all cursor-pointer hover:shadow-xl hover:shadow-cyan-500/10"
+                onClick={() => setSelectedClaim(claim)}
+              >
+                <CardBody>
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-lg ${
+                        claim.fraud_assessment?.riskLevel === 'high' ? 'bg-red-500/20' :
+                        claim.fraud_assessment?.riskLevel === 'medium' ? 'bg-amber-500/20' :
+                        'bg-green-500/20'
+                      }`}>
+                        <Shield className={`w-5 h-5 ${
+                          claim.fraud_assessment?.riskLevel === 'high' ? 'text-red-400' :
+                          claim.fraud_assessment?.riskLevel === 'medium' ? 'text-amber-400' :
+                          'text-green-400'
+                        }`} />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-white">
+                          {claim.claim_data?.claimNumber || `Claim ${claim.processing_id?.slice(0, 8) || index + 1}`}
+                        </h3>
+                        <p className="text-xs text-gray-400">
+                          {claim.created_at ? format(new Date(claim.created_at), 'MMM d, h:mm a') : 'Recent'}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge className={`${
+                      claim.status === 'completed' ? 'bg-green-500/20 text-green-400 border-green-500/30' :
+                      'bg-red-500/20 text-red-400 border-red-500/30'
+                    } border`}>
+                      {claim.status || 'completed'}
+                    </Badge>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-400">Type</span>
+                      <span className="text-sm font-medium text-white capitalize">
+                        {claim.claim_data?.claimType || 'General'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-400">Amount</span>
+                      <span className="text-sm font-medium text-white">
+                        {formatCurrency(claim.claim_data?.estimatedAmount)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-400">Risk Level</span>
+                      <Badge className={`text-xs ${
+                        claim.fraud_assessment?.riskLevel === 'high' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
+                        claim.fraud_assessment?.riskLevel === 'medium' ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' :
+                        'bg-green-500/20 text-green-400 border-green-500/30'
+                      } border`}>
+                        {claim.fraud_assessment?.riskLevel || 'low'} risk
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-400">Processing Time</span>
+                      <span className="text-sm font-medium text-white">
+                        {claim.processing_time_ms ? `${(claim.processing_time_ms / 1000).toFixed(1)}s` : 'N/A'}
+                      </span>
+                    </div>
+                  </div>
+                </CardBody>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const renderAnalyticsTab = () => {
     // Calculate additional analytics
     const totalAmount = allClaims.reduce((sum, claim) => 
-      sum + (claim.claimData?.estimatedAmount || 0), 0
+      sum + (claim.claimData?.estimatedAmount  || claim.claim_data?.estimatedAmount || 0), 0
     );
     
     const averageFraudScore = allClaims.length > 0

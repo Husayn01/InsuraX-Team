@@ -663,6 +663,134 @@ export const supabaseHelpers = {
     )
     
     return subscription.subscribe()
+  },
+
+  // NeuroClaim helpers
+  async createNeuroClaimSession(sessionData) {
+    try {
+      const { data, error } = await supabase
+        .from('neuroclaim_sessions')
+        .insert([sessionData])
+        .select()
+        .single()
+      
+      if (error) throw error
+      return { data, error: null }
+    } catch (error) {
+      console.error('Error creating NeuroClaim session:', error)
+      return { data: null, error }
+    }
+  },
+
+  async getNeuroClaimSessions(userId, filters = {}) {
+    try {
+      let query = supabase
+        .from('neuroclaim_sessions')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+      
+      if (filters.limit) {
+        query = query.limit(filters.limit)
+      }
+      
+      if (filters.status) {
+        query = query.eq('status', filters.status)
+      }
+      
+      if (filters.dateFrom) {
+        query = query.gte('created_at', filters.dateFrom)
+      }
+      
+      if (filters.dateTo) {
+        query = query.lte('created_at', filters.dateTo)
+      }
+      
+      const { data, error } = await query
+      
+      if (error) throw error
+      return { data: data || [], error: null }
+    } catch (error) {
+      console.error('Error fetching NeuroClaim sessions:', error)
+      return { data: [], error }
+    }
+  },
+
+  async getNeuroClaimSession(sessionId) {
+    try {
+      const { data, error } = await supabase
+        .from('neuroclaim_sessions')
+        .select('*')
+        .eq('id', sessionId)
+        .single()
+      
+      if (error) throw error
+      return { data, error: null }
+    } catch (error) {
+      console.error('Error fetching NeuroClaim session:', error)
+      return { data: null, error }
+    }
+  },
+
+  async getNeuroClaimAnalytics(userId) {
+    try {
+      const { data, error } = await supabase
+        .from('neuroclaim_sessions')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'completed')
+      
+      if (error) throw error
+      
+      // Calculate analytics
+      const analytics = {
+        totalProcessed: data.length,
+        totalClaimAmount: data.reduce((sum, session) => 
+          sum + (session.claim_data?.estimatedAmount || 0), 0
+        ),
+        averageProcessingTime: data.length > 0 
+          ? data.reduce((sum, session) => sum + session.processing_time_ms, 0) / data.length 
+          : 0,
+        riskDistribution: {
+          high: data.filter(s => s.fraud_assessment?.riskLevel === 'high').length,
+          medium: data.filter(s => s.fraud_assessment?.riskLevel === 'medium').length,
+          low: data.filter(s => s.fraud_assessment?.riskLevel === 'low').length
+        },
+        claimTypeDistribution: data.reduce((acc, session) => {
+          const type = session.claim_data?.claimType || 'unknown'
+          acc[type] = (acc[type] || 0) + 1
+          return acc
+        }, {}),
+        dailyTrend: this.calculateDailyTrend(data)
+      }
+      
+      return { data: analytics, error: null }
+    } catch (error) {
+      console.error('Error calculating NeuroClaim analytics:', error)
+      return { data: null, error }
+    }
+  },
+
+  // Helper function for daily trend calculation
+  calculateDailyTrend(sessions) {
+    const trend = sessions.reduce((acc, session) => {
+      const date = new Date(session.created_at).toLocaleDateString()
+      if (!acc[date]) {
+        acc[date] = { count: 0, totalAmount: 0 }
+      }
+      acc[date].count++
+      acc[date].totalAmount += session.claim_data?.estimatedAmount || 0
+      return acc
+    }, {})
+    
+    return Object.entries(trend)
+      .map(([date, data]) => ({
+        date,
+        count: data.count,
+        totalAmount: data.totalAmount
+      }))
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .slice(-7) // Last 7 days
   }
 }
 
