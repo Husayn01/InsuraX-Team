@@ -232,36 +232,79 @@ Contact: +234 805 678 9012`
     setCurrentResult(null);
     setErrorMessage('');
 
+    // Add a timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      setProcessing(false);
+      setErrorMessage('Processing timed out. Please try again with a smaller file or check your connection.');
+    }, 120000); // 2 minute timeout
+
     try {
       let textToProcess = documentText;
 
       // If files are uploaded, extract text from them
       if (uploadedFiles.length > 0) {
-        const extractedTexts = await Promise.all(
-          uploadedFiles.map(file => enhancedSystem.extractTextFromFile(file))
-        );
-        textToProcess = extractedTexts.join('\n\n---\n\n') + '\n\n' + documentText;
+        try {
+          console.log('Extracting text from uploaded files...');
+          const extractedTexts = await Promise.all(
+            uploadedFiles.map(async (file) => {
+              try {
+                const text = await enhancedSystem.extractTextFromFile(file);
+                console.log(`Extracted ${text.length} characters from ${file.name}`);
+                return text;
+              } catch (error) {
+                console.error(`Failed to extract from ${file.name}:`, error);
+                setErrorMessage(`Warning: Could not extract text from ${file.name}`);
+                return ''; // Return empty string instead of throwing
+              }
+            })
+          );
+          
+          const validTexts = extractedTexts.filter(text => text && text.length > 0);
+          if (validTexts.length === 0 && !documentText.trim()) {
+            throw new Error('No text could be extracted from the uploaded files');
+          }
+          
+          textToProcess = validTexts.join('\n\n---\n\n') + '\n\n' + documentText;
+          console.log('Total text to process:', textToProcess.length, 'characters');
+        } catch (extractionError) {
+          console.error('File extraction failed:', extractionError);
+          clearTimeout(timeoutId);
+          setProcessing(false);
+          setErrorMessage(`Failed to extract text from files: ${extractionError.message}`);
+          return;
+        }
       }
 
+      console.log('Starting AI processing...');
       const result = await enhancedSystem.processClaimComplete(textToProcess, {
         generateCustomerResponse: true,
         customerFriendly: true,
-        userId: user?.id // Pass user ID for database storage
+        userId: user?.id
       });
 
+      clearTimeout(timeoutId); // Clear the timeout on success
+
       if (result.status === 'completed') {
+        console.log('Processing completed successfully');
         setCurrentResult(result);
+        
         // Fetch updated history from database
         if (user?.id) {
-          const historicalClaims = await enhancedSystem.getHistoricalClaims(user.id);
-          setAllClaims(historicalClaims);
-          const analytics = await enhancedSystem.getAnalytics(user.id);
-          setAnalytics(analytics);
+          try {
+            const historicalClaims = await enhancedSystem.getHistoricalClaims(user.id);
+            setAllClaims(historicalClaims);
+            const analytics = await enhancedSystem.getAnalytics(user.id);
+            setAnalytics(analytics);
+          } catch (dbError) {
+            console.error('Failed to refresh history:', dbError);
+            // Don't fail the whole process if history refresh fails
+          }
         }
       } else {
         throw new Error(result.error || 'Processing failed');
       }
     } catch (error) {
+      clearTimeout(timeoutId);
       console.error('Processing error:', error);
       setErrorMessage(`Processing failed: ${error.message}`);
       setCurrentResult(null);

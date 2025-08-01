@@ -288,18 +288,87 @@ calculateExtractionConfidence(data) {
     }
   }
 
-  async extractFromTextFile(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result);
-      reader.onerror = () => reject(new Error('Failed to read text file'));
-      reader.readAsText(file);
-    });
+// Also update the extractTextFromFile method to handle errors better:
+  async extractTextFromFile(file) {
+    const fileType = file.type.toLowerCase();
+    const fileName = file.name.toLowerCase();
+
+    console.log(`Extracting text from file: ${file.name} (type: ${file.type})`);
+
+    try {
+      if (fileType === 'text/plain' || fileName.endsWith('.txt')) {
+        return await this.extractFromTextFile(file);
+      } else if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
+        return await this.extractFromPDF(file);
+      } else if (fileType.includes('image/')) {
+        return await this.extractFromImage(file);
+      } else {
+        throw new Error(`Unsupported file type: ${file.type}`);
+      }
+    } catch (error) {
+      console.error(`Error extracting from ${file.name}:`, error);
+      throw error;
+    }
   }
 
-  async extractFromPDF(file) {
-    // In production, use pdf.js or similar
-    return `[PDF Content - ${file.name}]\n\nPDF extraction would happen here in production using libraries like pdf.js`;
+    async extractFromPDF(file) {
+    console.log('Extracting text from PDF:', file.name);
+    
+    try {
+      // Check if pdfjsLib is available
+      if (typeof window.pdfjsLib === 'undefined') {
+        console.error('PDF.js library not loaded');
+        throw new Error('PDF.js library not available');
+      }
+
+      // Convert file to ArrayBuffer
+      const arrayBuffer = await file.arrayBuffer();
+      
+      // Load the PDF document
+      const loadingTask = window.pdfjsLib.getDocument({
+        data: arrayBuffer,
+        // You might need to set workerSrc if not already set
+        // pdfjsLib.GlobalWorkerOptions.workerSrc = '//cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.worker.min.js';
+      });
+      
+      const pdf = await loadingTask.promise;
+      console.log('PDF loaded, pages:', pdf.numPages);
+      
+      let fullText = '';
+      
+      // Extract text from each page
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        
+        // Combine text items with spaces
+        const pageText = textContent.items
+          .map(item => item.str)
+          .join(' ');
+        
+        fullText += `\n--- Page ${pageNum} ---\n${pageText}\n`;
+      }
+      
+      console.log('Extracted text length:', fullText.length);
+      
+      if (!fullText.trim()) {
+        console.warn('No text extracted from PDF - might be an image-based PDF');
+        return `Unable to extract text from ${file.name}. The PDF might contain scanned images instead of text.`;
+      }
+      
+      return fullText;
+      
+    } catch (error) {
+      console.error('PDF extraction error:', error);
+      
+      // Fallback: try reading as text (rarely works for PDFs)
+      try {
+        return await this.extractFromTextFile(file);
+      } catch (fallbackError) {
+        console.error('Fallback extraction also failed:', fallbackError);
+        return `Error extracting text from PDF: ${error.message}`;
+      }
+    }
   }
 
   async extractFromImage(file) {
