@@ -3,6 +3,86 @@
 @tailwind utilities;
 
 @layer base {
+  /* Global styles for better select dropdown appearance */
+  select {
+    background-image: none;
+  }
+  
+  /* Style select options for consistent dark theme */
+  option {
+    @apply bg-gray-900 text-white;
+    background-color: #0f172a !important;
+    color: #ffffff !important;
+  }
+  
+  /* Style for select dropdown on focus/active */
+  select:focus option,
+  select:active option {
+    @apply bg-gray-900 text-white;
+    background-color: #0f172a !important;
+  }
+  
+  /* Hover state for options (where supported) */
+  option:hover,
+  option:focus,
+  option:active,
+  option:checked {
+    @apply bg-gray-800 text-white;
+    background-color: #1e293b !important;
+    box-shadow: 0 0 10px 100px #1e293b inset;
+  }
+}
+
+/* Remove default focus outline and add custom one */
+@layer utilities {
+  select:focus {
+    outline: none;
+  }
+}
+
+/* Webkit browsers specific styling */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  select {
+    background-color: rgba(31, 41, 55, 0.8) !important;
+  }
+  
+  select option {
+    background-color: #0f172a !important;
+    color: #ffffff !important;
+  }
+}
+
+/* Firefox specific styling */
+@-moz-document url-prefix() {
+  select {
+    background-color: rgba(31, 41, 55, 0.8) !important;
+  }
+  
+  select option {
+    background-color: #0f172a !important;
+    color: #ffffff !important;
+  }
+}
+
+/* Custom scrollbar for select dropdowns */
+select::-webkit-scrollbar {
+  width: 8px;
+}
+
+select::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+select::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 4px;
+}
+
+select::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+@layer base {
   html {
     @apply scroll-smooth;
   }

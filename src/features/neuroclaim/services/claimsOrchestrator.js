@@ -284,50 +284,52 @@ export class ClaimsProcessingSystem {
     }
   }
 
-  async extractFromImage(file) {
-    try {
-      // Load Tesseract on demand
-      if (!this.tesseractWorker) {
-        const Tesseract = await loadTesseract();
-        if (!Tesseract) {
-          throw new Error('Tesseract.js failed to load');
-        }
-
-        this.tesseractWorker = await Tesseract.createWorker({
-          logger: m => console.log('OCR Progress:', m.progress)
-        });
-        await this.tesseractWorker.loadLanguage('eng');
-        await this.tesseractWorker.initialize('eng');
+async extractFromImage(file) {
+  try {
+    // Load Tesseract on demand
+    if (!this.tesseractWorker) {
+      const Tesseract = await loadTesseract();
+      if (!Tesseract) {
+        throw new Error('Tesseract.js failed to load');
       }
 
-      // Convert file to data URL for Tesseract
-      const dataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
-      // Perform OCR
-      console.log(`Performing OCR on ${file.name}...`);
-      const { data: { text, confidence } } = await this.tesseractWorker.recognize(dataUrl);
+      // Create worker without deprecated methods
+      this.tesseractWorker = await Tesseract.createWorker();
       
-      // Add metadata and confidence info
-      const extractedText = `Image Document: ${file.name}\n` +
-                          `Type: ${file.type}\n` +
-                          `Size: ${(file.size / 1024).toFixed(2)} KB\n` +
-                          `OCR Confidence: ${confidence.toFixed(2)}%\n\n` +
-                          `Extracted Text:\n${text}`;
-      
-      return extractedText;
-    } catch (error) {
-      console.error('OCR extraction error:', error);
-      // Fallback message if OCR fails
-      return `Image Document: ${file.name}\n` +
-             `OCR extraction failed: ${error.message}\n` +
-             `Please ensure the image contains clear, readable text.`;
+      // Note: loadLanguage and initialize are deprecated in newer versions
+      // The worker comes pre-loaded with language
     }
+
+    // Convert file to data URL for Tesseract
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    // Perform OCR
+    console.log(`Starting OCR for ${file.name}...`);
+    const { data: { text, confidence } } = await this.tesseractWorker.recognize(dataUrl);
+    
+    console.log(`OCR completed. Confidence: ${confidence}%`);
+    console.log(`Extracted text preview: ${text.substring(0, 200)}...`);
+    
+    // Return ONLY the extracted text, not the metadata
+    // This is what was causing Gemini to return nulls
+    if (!text || text.trim().length === 0) {
+      throw new Error('No text found in image');
+    }
+    
+    return text.trim(); // Return just the text, no metadata
+    
+  } catch (error) {
+    console.error('OCR extraction error:', error);
+    // Return empty string on failure so processing can continue
+    return '';
   }
+}
+  
 
   async extractFromJSON(file) {
     try {

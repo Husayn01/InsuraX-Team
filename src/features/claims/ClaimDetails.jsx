@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
+import { NairaIcon } from '@shared/components'
 import { 
   FileText, Download, MessageSquare, Clock, CheckCircle, 
   XCircle, AlertCircle, ChevronRight, Calendar, DollarSign,
@@ -229,7 +230,9 @@ export const ClaimDetails = () => {
                 Claim Status: {config.text}
               </h3>
               <p className="text-sm text-gray-400">
-                Last updated: {format(new Date(claim.updated_at), 'MMM d, yyyy h:mm a')}
+                Last updated: {claim.updated_at && !isNaN(new Date(claim.updated_at).getTime()) 
+                ? format(new Date(claim.updated_at), 'MMM d, yyyy h:mm a')
+                : 'N/A'}
               </p>
             </div>
           </div>
@@ -308,7 +311,9 @@ export const ClaimDetails = () => {
             <div>
               <p className="font-medium">Dispute Under Review</p>
               <p className="text-sm mt-1">
-                Submitted on {format(new Date(claim.claim_data.dispute.submitted_at), 'MMM d, yyyy')}
+               Submitted on {claim.claim_data.dispute.submitted_at && !isNaN(new Date(claim.claim_data.dispute.submitted_at).getTime())
+                ? format(new Date(claim.claim_data.dispute.submitted_at), 'MMM d, yyyy')
+                : 'Date not available'}
               </p>
             </div>
           </Alert>
@@ -425,13 +430,15 @@ export const ClaimDetails = () => {
                 <p className="text-sm text-gray-400 mb-1">Date of Incident</p>
                 <p className="text-white font-medium flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-gray-400" />
-                  {format(new Date(claim.claim_data?.dateOfIncident), 'MMM d, yyyy')}
+                  {claim.claim_data?.dateOfIncident && !isNaN(new Date(claim.claim_data.dateOfIncident).getTime())
+                    ? format(new Date(claim.claim_data.dateOfIncident), 'MMM d, yyyy')
+                    : 'Date not available'}
                 </p>
               </div>
               <div>
                 <p className="text-sm text-gray-400 mb-1">Estimated Amount</p>
                 <p className="text-white font-medium flex items-center gap-2">
-                  <DollarSign className="w-4 h-4 text-gray-400" />
+                  <NairaIcon className="w-4 h-4 text-gray-400" />
                   ₦{claim.claim_data?.estimatedAmount?.toLocaleString()}
                 </p>
               </div>
@@ -567,7 +574,9 @@ export const ClaimDetails = () => {
                          entry.action}
                       </p>
                       <p className="text-sm text-gray-400">
-                        {format(new Date(entry.timestamp), 'MMM d, yyyy h:mm a')}
+                        {entry.timestamp && !isNaN(new Date(entry.timestamp).getTime())
+                          ? format(new Date(entry.timestamp), 'MMM d, yyyy h:mm a')
+                          : 'Time not available'}
                       </p>
                     </div>
                   </div>
@@ -592,7 +601,7 @@ export const ClaimDetails = () => {
               onClick={() => toggleSection('payment')}
             >
               <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-emerald-400" />
+                <NairaIcon className="w-5 h-5 text-emerald-400" />
                 Payment Information
               </h3>
               {expandedSections.payment ? <ChevronUp /> : <ChevronDown />}
@@ -756,7 +765,7 @@ export const ClaimDetails = () => {
       </Modal>
 
       {/* Add custom animations */}
-      <style jsx>{`
+      <style>{`
         @keyframes float {
           0%, 100% { transform: translateY(0px); }
           50% { transform: translateY(-20px); }

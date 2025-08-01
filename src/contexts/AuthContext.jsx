@@ -240,17 +240,26 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
-  const refreshSession = async () => {
-    if (isRefreshing) {
-      console.log('🔄 Already refreshing session, skipping...')
-      return
-    }
+const refreshSession = async () => {
+  if (isRefreshing) {
+    console.log('🔄 Already refreshing session, skipping...')
+    return
+  }
+  
+  try {
+    setIsRefreshing(true)
+    console.log('🔄 Manually refreshing session...')
     
-    try {
-      setIsRefreshing(true)
-      console.log('🔄 Manually refreshing session...')
-      
-      const { data: { session }, error } = await supabase.auth.refreshSession()
+    // Add timeout to prevent infinite hanging
+    const refreshPromise = supabase.auth.refreshSession()
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Refresh timeout')), 10000)
+    )
+    
+    const { data: { session }, error } = await Promise.race([
+      refreshPromise,
+      timeoutPromise
+    ])
       
       if (error) {
         console.error('❌ Session refresh error:', error)

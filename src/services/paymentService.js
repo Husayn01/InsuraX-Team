@@ -168,41 +168,6 @@ export const paymentService = {
   },
 
   /**
-   * Create virtual account for claim settlements
-   * @param {Object} settlementData - Settlement details
-   * @returns {Object} Virtual account details
-   */
-  async createSettlementAccount(settlementData) {
-    try {
-      const { data, error } = await supabase.functions.invoke('create-settlement-account', {
-        body: {
-          customer_id: settlementData.customer_id,
-          claim_id: settlementData.claim_id,
-          amount: settlementData.amount,
-          bank_code: settlementData.bank_code,
-          account_number: settlementData.account_number,
-          account_name: settlementData.account_name
-        }
-      })
-
-      if (error) {
-        throw new Error(error.message || 'Failed to create settlement account')
-      }
-
-      return {
-        success: true,
-        data
-      }
-    } catch (error) {
-      console.error('Settlement account error:', error)
-      return {
-        success: false,
-        error: error.message
-      }
-    }
-  },
-
-  /**
    * Get list of banks for bank transfer
    * @returns {Array} List of banks
    */
@@ -229,7 +194,7 @@ export const paymentService = {
   },
 
   /**
-   * Resolve account details
+   * Resolve account number to get account name
    * @param {string} accountNumber - Account number
    * @param {string} bankCode - Bank code
    * @returns {Object} Account details
@@ -244,65 +209,17 @@ export const paymentService = {
       })
 
       if (error) {
-        throw new Error(error.message || 'Failed to resolve account')
+        throw new Error(error.message || 'Account resolution failed')
       }
 
       return {
         success: true,
-        data: data.data
+        account_name: data.account_name,
+        account_number: data.account_number,
+        bank_id: data.bank_id
       }
     } catch (error) {
       console.error('Account resolution error:', error)
-      return {
-        success: false,
-        error: error.message
-      }
-    }
-  },
-
-  /**
-   * Generate payment receipt
-   * @param {string} paymentId - Payment ID
-   * @returns {Object} Receipt data
-   */
-  async generateReceipt(paymentId) {
-    try {
-      const { data: payment, error } = await supabase
-        .from('payments')
-        .select(`
-          *,
-          customer:customer_id (
-            full_name,
-            email,
-            phone
-          ),
-          claim:claim_id (
-            claim_data
-          )
-        `)
-        .eq('id', paymentId)
-        .single()
-
-      if (error) {
-        throw new Error('Payment not found')
-      }
-
-      return {
-        success: true,
-        receipt: {
-          payment_id: payment.id,
-          reference: payment.gateway_reference || payment.transaction_ref,
-          amount: payment.amount,
-          status: payment.status,
-          method: payment.payment_method,
-          date: payment.paid_at || payment.created_at,
-          customer: payment.customer,
-          description: payment.description,
-          claim_number: payment.claim?.claim_data?.claimNumber
-        }
-      }
-    } catch (error) {
-      console.error('Receipt generation error:', error)
       return {
         success: false,
         error: error.message

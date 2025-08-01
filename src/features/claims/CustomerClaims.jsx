@@ -372,7 +372,7 @@ const getClaimTypeIcon = (type) => {
                             </span>
                             {claim.claim_data?.estimatedAmount && (
                               <span className="font-medium text-green-400">
-                                ${claim.claim_data.estimatedAmount.toLocaleString()}
+                                ₦{claim.claim_data.estimatedAmount.toLocaleString()}
                               </span>
                             )}
                           </div>

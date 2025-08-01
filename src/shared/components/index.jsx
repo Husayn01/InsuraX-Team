@@ -1,7 +1,8 @@
+// Core UI Components for InsuraX
 import React from 'react'
 import { 
-  X, AlertCircle, CheckCircle, Info, AlertTriangle,
-  Loader2, ChevronDown, ChevronUp, Search
+  X, Loader2, AlertCircle, CheckCircle, Info, 
+  AlertTriangle, ChevronDown, Search 
 } from 'lucide-react'
 
 // Button Component
@@ -11,40 +12,45 @@ export const Button = ({
   size = 'md', 
   loading = false, 
   disabled = false,
+  icon: Icon,
+  iconPosition = 'left',
   className = '',
-  onClick,
-  type = 'button',
   ...props 
 }) => {
-  const baseClasses = 'inline-flex items-center justify-center font-medium rounded-lg transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 disabled:opacity-50 disabled:cursor-not-allowed'
+  const baseStyles = 'inline-flex items-center justify-center font-medium rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed'
   
   const variants = {
-    primary: 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white shadow-lg hover:shadow-cyan-500/25 focus:ring-cyan-500',
-    secondary: 'bg-gray-800/50 backdrop-blur-sm border border-gray-700 hover:bg-gray-700/50 hover:border-gray-600 text-gray-300 hover:text-white focus:ring-gray-500',
-    success: 'bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white shadow-lg hover:shadow-emerald-500/25 focus:ring-emerald-500',
-    danger: 'bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white shadow-lg hover:shadow-red-500/25 focus:ring-red-500',
-    warning: 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white shadow-lg hover:shadow-amber-500/25 focus:ring-amber-500',
-    ghost: 'hover:bg-gray-800/50 text-gray-400 hover:text-white focus:ring-gray-500'
+    primary: 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:from-cyan-400 hover:to-blue-500 shadow-lg hover:shadow-xl',
+    secondary: 'bg-gray-800/50 backdrop-blur-sm text-gray-300 border border-gray-700 hover:bg-gray-700 hover:text-white',
+    danger: 'bg-gradient-to-r from-red-500 to-red-600 text-white hover:from-red-400 hover:to-red-500',
+    success: 'bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-400 hover:to-green-500',
+    ghost: 'text-gray-300 hover:bg-gray-800/50 hover:text-white'
   }
   
   const sizes = {
-    sm: 'px-3 py-1.5 text-sm',
-    md: 'px-4 py-2 text-base',
-    lg: 'px-6 py-3 text-lg'
+    sm: 'px-3 py-2 text-sm gap-1.5',
+    md: 'px-4 py-2.5 text-base gap-2',
+    lg: 'px-6 py-3 text-lg gap-2.5'
   }
-  
-  const isDisabled = disabled || loading
   
   return (
     <button
-      type={type}
-      className={`${baseClasses} ${variants[variant]} ${sizes[size]} ${className} ${!isDisabled && 'transform hover:scale-105'}`}
-      disabled={isDisabled}
-      onClick={onClick}
+      className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${className}`}
+      disabled={disabled || loading}
       {...props}
     >
-      {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-      {children}
+      {loading ? (
+        <>
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span>Loading...</span>
+        </>
+      ) : (
+        <>
+          {Icon && iconPosition === 'left' && <Icon className="w-4 h-4" />}
+          {children}
+          {Icon && iconPosition === 'right' && <Icon className="w-4 h-4" />}
+        </>
+      )}
     </button>
   )
 }
@@ -88,11 +94,12 @@ export const Input = ({
   )
 }
 
-// Select Component
+// Select Component - Fixed to support both options prop and children
 export const Select = ({ 
   label, 
   error, 
   options = [], 
+  children,
   className = '', 
   selectClassName = '',
   ...props 
@@ -113,7 +120,7 @@ export const Select = ({
           } focus:border-transparent transition-all duration-300 ${selectClassName}`}
           {...props}
         >
-          {options.map((option) => (
+          {children || options.map((option) => (
             <option key={option.value} value={option.value} className="bg-gray-800">
               {option.label}
             </option>
@@ -131,13 +138,19 @@ export const Select = ({
   )
 }
 
+export const NairaIcon = ({ className = "w-5 h-5" }) => (
+  <span className={`inline-flex items-center justify-center font-bold ${className}`}>
+    ₦
+  </span>
+)
+
 // Card Component
 export const Card = ({ children, className = '', hover = true, ...props }) => {
   return (
     <div 
       className={`bg-gray-800/50 backdrop-blur-sm border border-gray-700/50 rounded-xl ${
-        hover ? 'hover:shadow-xl transition-all duration-300' : ''
-      } ${className}`} 
+        hover ? 'hover:shadow-lg hover:shadow-cyan-500/10 transition-all duration-300' : ''
+      } ${className}`}
       {...props}
     >
       {children}
@@ -145,6 +158,7 @@ export const Card = ({ children, className = '', hover = true, ...props }) => {
   )
 }
 
+// CardBody Component
 export const CardBody = ({ children, className = '', ...props }) => {
   return (
     <div className={`p-6 ${className}`} {...props}>
@@ -155,75 +169,59 @@ export const CardBody = ({ children, className = '', ...props }) => {
 
 // Alert Component
 export const Alert = ({ 
-  type = 'info', 
-  title, 
   children, 
-  onClose, 
-  className = '' 
+  variant = 'info', 
+  dismissible = false, 
+  onDismiss,
+  className = '',
+  icon: CustomIcon,
+  ...props 
 }) => {
-  const types = {
+  const variants = {
     info: {
-      bg: 'bg-blue-900/20',
+      bg: 'bg-blue-500/10',
       border: 'border-blue-500/50',
-      icon: Info,
-      iconColor: 'text-blue-400',
-      titleColor: 'text-blue-400',
-      textColor: 'text-blue-300'
+      text: 'text-blue-400',
+      icon: Info
     },
     success: {
-      bg: 'bg-emerald-900/20',
+      bg: 'bg-emerald-500/10',
       border: 'border-emerald-500/50',
-      icon: CheckCircle,
-      iconColor: 'text-emerald-400',
-      titleColor: 'text-emerald-400',
-      textColor: 'text-emerald-300'
+      text: 'text-emerald-400',
+      icon: CheckCircle
     },
     warning: {
-      bg: 'bg-amber-900/20',
+      bg: 'bg-amber-500/10',
       border: 'border-amber-500/50',
-      icon: AlertTriangle,
-      iconColor: 'text-amber-400',
-      titleColor: 'text-amber-400',
-      textColor: 'text-amber-300'
+      text: 'text-amber-400',
+      icon: AlertTriangle
     },
     error: {
-      bg: 'bg-red-900/20',
+      bg: 'bg-red-500/10',
       border: 'border-red-500/50',
-      icon: AlertCircle,
-      iconColor: 'text-red-400',
-      titleColor: 'text-red-400',
-      textColor: 'text-red-300'
+      text: 'text-red-400',
+      icon: AlertCircle
     }
   }
   
-  const config = types[type]
-  const Icon = config.icon
+  const { bg, border, text, icon: DefaultIcon } = variants[variant]
+  const Icon = CustomIcon || DefaultIcon
   
   return (
-    <div className={`${config.bg} ${config.border} border rounded-lg p-4 ${className}`}>
-      <div className="flex">
-        <div className="flex-shrink-0">
-          <Icon className={`w-5 h-5 ${config.iconColor}`} />
-        </div>
-        <div className="ml-3 flex-1">
-          {title && (
-            <h3 className={`text-sm font-medium ${config.titleColor} mb-1`}>
-              {title}
-            </h3>
-          )}
-          <div className={`text-sm ${config.textColor}`}>
-            {children}
-          </div>
-        </div>
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="ml-3 flex-shrink-0 inline-flex text-gray-400 hover:text-gray-300 focus:outline-none transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        )}
-      </div>
+    <div 
+      className={`${bg} ${border} ${text} border rounded-lg p-4 flex items-start gap-3 ${className}`}
+      {...props}
+    >
+      <Icon className="w-5 h-5 flex-shrink-0 mt-0.5" />
+      <div className="flex-1">{children}</div>
+      {dismissible && (
+        <button
+          onClick={onDismiss}
+          className={`${text} hover:opacity-70 transition-opacity`}
+        >
+          <X className="w-5 h-5" />
+        </button>
+      )}
     </div>
   )
 }
@@ -232,16 +230,18 @@ export const Alert = ({
 export const Badge = ({ 
   children, 
   variant = 'default', 
-  size = 'md', 
-  className = '' 
+  size = 'md',
+  className = '',
+  icon: Icon,
+  ...props 
 }) => {
   const variants = {
-    default: 'bg-gray-700/50 text-gray-300 border-gray-600',
+    default: 'bg-gray-700 text-gray-300',
     primary: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
     success: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
     warning: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
     danger: 'bg-red-500/20 text-red-400 border-red-500/30',
-    purple: 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+    info: 'bg-blue-500/20 text-blue-400 border-blue-500/30'
   }
   
   const sizes = {
@@ -251,7 +251,11 @@ export const Badge = ({
   }
   
   return (
-    <span className={`inline-flex items-center font-medium rounded-full border backdrop-blur-sm ${variants[variant]} ${sizes[size]} ${className}`}>
+    <span 
+      className={`inline-flex items-center gap-1.5 font-medium rounded-full border ${variants[variant]} ${sizes[size]} ${className}`}
+      {...props}
+    >
+      {Icon && <Icon className="w-3.5 h-3.5" />}
       {children}
     </span>
   )
@@ -276,34 +280,30 @@ export const Modal = ({
   }
   
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex min-h-screen items-center justify-center p-4">
-        <div 
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity" 
-          onClick={onClose}
-        />
-        <div className={`relative bg-gray-800 rounded-2xl shadow-2xl ${sizes[size]} w-full max-h-[90vh] overflow-hidden border border-gray-700 ${className}`}>
-          {title && (
-            <div className="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
-              <h3 className="text-xl font-semibold text-white">{title}</h3>
-              <button
-                onClick={onClose}
-                className="text-gray-400 hover:text-white transition-colors focus:outline-none"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-          )}
-          <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
-            {children}
-          </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div 
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className={`relative bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full ${sizes[size]} max-h-[90vh] overflow-hidden ${className}`}>
+        <div className="flex items-center justify-between p-6 border-b border-gray-700">
+          <h3 className="text-xl font-semibold text-white">{title}</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="p-6 overflow-y-auto max-h-[calc(90vh-8rem)]">
+          {children}
         </div>
       </div>
     </div>
   )
 }
 
-// LoadingSpinner Component
+// Loading Spinner Component
 export const LoadingSpinner = ({ size = 'md', className = '' }) => {
   const sizes = {
     sm: 'w-8 h-8',
@@ -313,15 +313,13 @@ export const LoadingSpinner = ({ size = 'md', className = '' }) => {
   
   return (
     <div className={`relative ${sizes[size]} ${className}`}>
-      <div className={`${sizes[size]} rounded-full border-4 border-gray-700/50`}></div>
-      <div className={`${sizes[size]} rounded-full border-4 border-cyan-500 border-t-transparent animate-spin absolute inset-0`}></div>
-      <div className={`w-[75%] h-[75%] rounded-full border-4 border-purple-500 border-t-transparent animate-spin absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 animation-delay-150`}></div>
-      <div className={`w-[50%] h-[50%] rounded-full border-4 border-pink-500 border-t-transparent animate-spin absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 animation-delay-300`}></div>
+      <div className="absolute inset-0 border-4 border-gray-700 rounded-full"></div>
+      <div className="absolute inset-0 border-4 border-cyan-500 rounded-full border-t-transparent animate-spin"></div>
     </div>
   )
 }
 
-// EmptyState Component
+// Empty State Component - Fixed to handle both component references and JSX elements
 export const EmptyState = ({ 
   icon: Icon, 
   title, 
@@ -332,9 +330,17 @@ export const EmptyState = ({
   return (
     <div className={`text-center py-12 ${className}`}>
       {Icon && (
-        <div className="mx-auto w-16 h-16 bg-gray-800/50 rounded-full flex items-center justify-center mb-4">
-          <Icon className="w-8 h-8 text-gray-600" />
-        </div>
+        React.isValidElement(Icon) ? (
+          // If Icon is a JSX element, render it directly
+          <div className="mb-4">
+            {Icon}
+          </div>
+        ) : (
+          // If Icon is a component, render it with default styling
+          <div className="mx-auto w-16 h-16 bg-gray-800/50 rounded-full flex items-center justify-center mb-4">
+            <Icon className="w-8 h-8 text-gray-600" />
+          </div>
+        )
       )}
       <h3 className="text-lg font-medium text-gray-300 mb-2">{title}</h3>
       <p className="text-gray-500 mb-6 max-w-sm mx-auto">{description}</p>
@@ -392,6 +398,7 @@ export const Tabs = ({ tabs, activeTab, onChange, className = '' }) => {
 // Export all components
 export default {
   Button,
+  NairaIcon,
   Input,
   Select,
   Card,

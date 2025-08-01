@@ -14,8 +14,9 @@ import {
   LoadingSpinner, Modal
 } from '@shared/components'
 import { FormInput, FormTextArea, FormSelect, FormGroup } from '@shared/components/FormComponents'
+import { NairaIcon } from '@shared/components'
 import { useAuth } from '@contexts/AuthContext'
-import { supabaseHelpers } from '@services/supabase'
+import { supabaseHelpers, supabase } from '@services/supabase'
 import { ClaimsProcessingSystem } from '@features/neuroclaim/services/claimsOrchestrator'
 import { documentUploadService } from '@services/documentUpload'
 
@@ -38,14 +39,13 @@ export const NewClaim = () => {
   const [isRunningPreview, setIsRunningPreview] = useState(false)
 
   const formatCurrency = (amount) => {
-  return new Intl.NumberFormat('en-NG', {
-    style: 'currency',
-    currency: 'NGN',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2
-  }).format(amount || 0)
-}
-
+    return new Intl.NumberFormat('en-NG', {
+      style: 'currency',
+      currency: 'NGN',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
+    }).format(amount || 0)
+  }
 
   const generateClaimNumber = () => {
     const date = new Date()
@@ -383,168 +383,218 @@ export const NewClaim = () => {
     }
   }
 
-  // Final submission
-const handleSubmit = async () => {
-
-  console.log('Submit clicked, validating...')
-  
-  // Ensure we have data to submit
-  let dataToSubmit = { ...formData }
-  if (!dataToSubmit.claimType && extractedData) {
-    dataToSubmit = {
-      claimType: extractedData.claimType || '',
-      description: extractedData.incidentDescription || '',
-      dateOfIncident: extractedData.dateOfIncident || '',
-      location: extractedData.incidentLocation || '',
-      estimatedAmount: extractedData.estimatedAmount || extractedData.claimAmount || '',
-      fullName: extractedData.claimantName || formData.fullName || '',
-      email: extractedData.contactEmail || formData.email || '',
-      phone: extractedData.contactPhone || formData.phone || '',
-      address: extractedData.claimantAddress || formData.address || ''
-    }
-  }
-  
-  // Validate
-  const errors = {}
-  if (!dataToSubmit.claimType) errors.claimType = 'Claim type is required'
-  if (!dataToSubmit.description) errors.description = 'Description is required'
-  if (!dataToSubmit.dateOfIncident) errors.dateOfIncident = 'Date is required'
-  if (!dataToSubmit.location) errors.location = 'Location is required'
-  if (!dataToSubmit.estimatedAmount) errors.estimatedAmount = 'Amount is required'
-  
-  if (Object.keys(errors).length > 0) {
-    setValidationErrors(errors)
-    setError('Please complete all required fields')
-    console.log('Validation failed:', errors)
-    return
-  }
-  
-  console.log('Validation passed, submitting...')
-  setLoading(true)
-  setError(null)
-  setProcessingStatus('Submitting claim...')
-
-  if (!validateStep(2)) return
-  
-  setLoading(true)
-  setError(null)
-  setProcessingStatus('Submitting claim...')
-  
-  let createdClaim = null
-  let uploadedFiles = []
-  
-  try {
-    // Clean up previews
-    uploadedDocuments.forEach(doc => {
-      if (doc.preview) {
-        URL.revokeObjectURL(doc.preview)
-        doc.preview = null
+  // Final submission with updated error handling and fallbacks
+  const handleSubmit = async () => {
+    console.log('Submit clicked, validating...')
+    
+    // Ensure we have data to submit
+    let dataToSubmit = { ...formData }
+    if (!dataToSubmit.claimType && extractedData) {
+      dataToSubmit = {
+        claimType: extractedData.claimType || '',
+        description: extractedData.incidentDescription || '',
+        dateOfIncident: extractedData.dateOfIncident || '',
+        location: extractedData.incidentLocation || '',
+        estimatedAmount: extractedData.estimatedAmount || extractedData.claimAmount || '',
+        fullName: extractedData.claimantName || formData.fullName || '',
+        email: extractedData.contactEmail || formData.email || '',
+        phone: extractedData.contactPhone || formData.phone || '',
+        address: extractedData.claimantAddress || formData.address || ''
       }
-    })
-
-    // Create claim
-    const claimNumber = generateClaimNumber()
-    const claimData = {
-      customer_id: user.id,
-      claim_data: {
-        ...formData,
-        claimNumber,
-        submittedAt: new Date().toISOString(),
-        extractedData: extractedData,
-        aiPreReview: aiPreviewResult,
-        documents: []
-      },
-      documents: [],
-      status: 'submitted'
     }
     
-    const { data: claim, error: claimError } = await supabaseHelpers.createClaim(claimData)
+    // Validate
+    const errors = {}
+    if (!dataToSubmit.claimType) errors.claimType = 'Claim type is required'
+    if (!dataToSubmit.description) errors.description = 'Description is required'
+    if (!dataToSubmit.dateOfIncident) errors.dateOfIncident = 'Date is required'
+    if (!dataToSubmit.location) errors.location = 'Location is required'
+    if (!dataToSubmit.estimatedAmount || isNaN(parseFloat(dataToSubmit.estimatedAmount))) {
+      errors.estimatedAmount = 'Valid amount is required'
+    }
+    if (!dataToSubmit.fullName) errors.fullName = 'Full name is required'
+    if (!dataToSubmit.email) errors.email = 'Email is required'
+    if (!dataToSubmit.phone) errors.phone = 'Phone number is required'
+    if (!dataToSubmit.address) errors.address = 'Address is required'
     
-    if (claimError) throw claimError
+    if (Object.keys(errors).length > 0) {
+      console.log('Validation errors:', errors)
+      setValidationErrors(errors)
+      setError('Please complete all required fields')
+      return
+    }
     
-    createdClaim = claim
-
-    // Upload documents
-    if (uploadedDocuments.length > 0) {
-      setProcessingStatus('Uploading documents...')
+    console.log('Validation passed, submitting...')
+    setLoading(true)
+    setError(null)
+    
+    try {
+      // Generate claim number
+      const claimNumber = `CLM-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`
+      console.log('Generated claim number:', claimNumber)
       
-      const fileObjects = uploadedDocuments.map(d => d.file)
-      const uploadResults = await documentUploadService.uploadMultipleFiles(
-        fileObjects,
-        createdClaim.id,
-        user.id,
-        (progress) => setUploadProgress(progress)
-      )
-
-      if (uploadResults.uploadedFiles.length > 0) {
-        uploadedFiles = uploadResults.uploadedFiles
+      // Create claim payload
+      const claimPayload = {
+        customer_id: user.id,
+        status: 'submitted',
+        claim_data: {
+          claimNumber,
+          claimType: dataToSubmit.claimType,
+          dateOfIncident: dataToSubmit.dateOfIncident,
+          incidentLocation: dataToSubmit.location,
+          incidentDescription: dataToSubmit.description,
+          estimatedAmount: parseFloat(dataToSubmit.estimatedAmount),
+          claimantName: dataToSubmit.fullName,
+          claimantAddress: dataToSubmit.address,
+          contactPhone: dataToSubmit.phone,
+          contactEmail: dataToSubmit.email,
+          policyNumber: dataToSubmit.policyNumber || null,
+          // Include AI results if available
+          ...(aiPreviewResult && {
+            fraudRiskLevel: aiPreviewResult.fraudAssessment?.riskLevel,
+            fraudRiskScore: aiPreviewResult.fraudAssessment?.riskScore,
+            categorization: aiPreviewResult.categorization,
+            aiAnalyzed: true,
+            aiAnalyzedAt: new Date().toISOString()
+          })
+        }
+      }
+      
+      console.log('Creating claim with payload:', claimPayload)
+      
+      let result
+      let createdClaimId
+      
+      // Method 1: Try the transactional method first
+      try {
+        if (uploadedDocuments.length > 0) {
+          console.log(`Uploading ${uploadedDocuments.length} documents...`)
+          result = await supabaseHelpers.createClaimWithDocuments(
+            claimPayload,
+            uploadedDocuments.map(doc => doc.file),
+            user.id
+          )
+        } else {
+          console.log('Creating claim without documents...')
+          const { data, error } = await supabaseHelpers.createClaim(claimPayload)
+          result = { success: !error, claim: data, error }
+        }
         
-        // Update claim with documents
-        await supabaseHelpers.updateClaim(createdClaim.id, {
-          claim_data: {
-            ...createdClaim.claim_data,
-            documents: uploadedFiles
-          },
-          documents: uploadedFiles.map(f => f.url)
+        if (result.success) {
+          createdClaimId = result.claim.id
+        }
+      } catch (methodError) {
+        console.error('Primary submission method failed:', methodError)
+        
+        // Method 2: Direct Supabase call as fallback
+        console.log('Trying direct Supabase insertion...')
+        try {
+          const { data: directClaim, error: directError } = await supabase
+            .from('claims')
+            .insert([{
+              ...claimPayload,
+              documents: [],
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }])
+            .select()
+            .single()
+          
+          if (directError) {
+            console.error('Direct insertion failed:', directError)
+            throw directError
+          }
+          
+          console.log('Direct insertion successful:', directClaim)
+          result = { success: true, claim: directClaim }
+          createdClaimId = directClaim.id
+          
+          // Upload documents separately if they exist
+          if (directClaim && uploadedDocuments.length > 0) {
+            console.log('Uploading documents separately...')
+            try {
+              const uploadPromises = uploadedDocuments.map(async (doc, index) => {
+                try {
+                  const uploadResult = await documentUploadService.uploadFile(
+                    doc.file,
+                    directClaim.id,
+                    user.id
+                  )
+                  return uploadResult
+                } catch (uploadErr) {
+                  console.error(`Failed to upload document ${index + 1}:`, uploadErr)
+                  return null
+                }
+              })
+              
+              const uploadResults = await Promise.allSettled(uploadPromises)
+              const successfulUploads = uploadResults
+                .filter(r => r.status === 'fulfilled' && r.value)
+                .map(r => r.value)
+              
+              if (successfulUploads.length > 0) {
+                // Update claim with successful uploads
+                await supabase
+                  .from('claims')
+                  .update({
+                    documents: successfulUploads.map(u => u.url),
+                    claim_data: {
+                      ...directClaim.claim_data,
+                      documents: successfulUploads
+                    },
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq('id', directClaim.id)
+              }
+            } catch (uploadError) {
+              console.error('Document upload failed:', uploadError)
+              // Don't fail the entire submission if just documents failed
+            }
+          }
+        } catch (directError) {
+          throw new Error('All submission methods failed. Please try again.')
+        }
+      }
+      
+      if (!result || !result.success) {
+        throw new Error(result?.error || 'Failed to submit claim')
+      }
+      
+      console.log('Claim created successfully:', result.claim)
+      
+      // Create notification
+      try {
+        await supabaseHelpers.createNotification({
+          user_id: user.id,
+          type: 'claim_submitted',
+          title: 'Claim Submitted Successfully',
+          message: `Your claim ${claimNumber} has been submitted and is being reviewed.`,
+          color: 'green',
+          icon: 'check-circle',
+          data: {
+            claimId: createdClaimId,
+            claimNumber: claimNumber
+          }
         })
+      } catch (notifError) {
+        console.error('Failed to create notification:', notifError)
+        // Don't fail the submission if notification fails
       }
+      
+      setSuccess(true)
+      
+      // Redirect after a short delay
+      setTimeout(() => {
+        navigate('/customer/claims')
+      }, 2000)
+      
+    } catch (err) {
+      console.error('Submission error:', err)
+      setError(err.message || 'Failed to submit claim. Please try again.')
+    } finally {
+      setLoading(false)
     }
-
-    // Create notification
-    await supabaseHelpers.createNotification({
-      user_id: user.id,
-      type: 'claim_update',
-      title: 'Claim Submitted Successfully',
-      message: `Your claim ${claimNumber} has been submitted and is awaiting review by our team.`,
-      data: { 
-        claimId: createdClaim.id,
-        status: 'submitted' 
-      }
-    })
-
-    setSuccess(true)
-    setProcessingStatus('Claim submitted successfully!')
-    
-    // ADD THIS: Navigate after showing success message
-    setTimeout(() => {
-      navigate('/customer/claims')
-    }, 2000)
-
-  } catch (err) {
-    console.error('Submission error:', err)
-    setError(err.message || 'Failed to submit claim. Please try again.')
-    setProcessingStatus('')
-    
-    // Clean up on error
-    if (createdClaim) {
-      try {
-        await supabaseHelpers.deleteClaim(createdClaim.id)
-      } catch (deleteErr) {
-        console.error('Failed to rollback claim:', deleteErr)
-      }
-    }
-    
-    if (uploadedFiles.length > 0) {
-      try {
-        await documentUploadService.deleteMultipleFiles(
-          uploadedFiles.map(f => f.filePath)
-        )
-      } catch (deleteErr) {
-        console.error('Failed to cleanup files:', deleteErr)
-      }
-    }
-  } finally {
-    setLoading(false)
-    setUploadProgress(null)
   }
-}
-  // const generateClaimNumber = () => {
-  //   const date = new Date()
-  //   const year = date.getFullYear()
-  //   const month = String(date.getMonth() + 1).padStart(2, '0')
-  //   const random = Math.random().toString(36).substring(2, 8).toUpperCase()
-  //   return `CLM-${year}${month}-${random}`
-  // }
 
   const getFileIcon = (fileType) => {
     if (fileType.startsWith('image/')) return FileImage
@@ -941,7 +991,7 @@ const handleSubmit = async () => {
                     value={formData.estimatedAmount}
                     onChange={handleInputChange}
                     placeholder="0.00"
-                    icon={DollarSign}
+                    icon={NairaIcon}
                     error={validationErrors.estimatedAmount}
                     required
                     min="0"
@@ -1249,7 +1299,7 @@ const handleSubmit = async () => {
                     <div className="flex justify-between items-center py-2 border-b border-gray-700">
                       <span className="text-gray-400">Estimated Amount</span>
                       <span className="font-medium text-cyan-400">
-                        ${formData.estimatedAmount || '0.00'}
+                        ₦{formData.estimatedAmount || '0.00'}
                       </span>
                     </div>
                     <div className="flex justify-between items-center py-2">
@@ -1287,7 +1337,7 @@ const handleSubmit = async () => {
                   </Alert>
                 )}
                   
-                  <div className="flex justify-center">
+                <div className="flex justify-center">
                   <Button
                     onClick={handleSubmit}
                     disabled={loading}

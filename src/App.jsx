@@ -16,6 +16,7 @@ import { ClaimDetails } from '@features/claims/ClaimDetails'
 import { CustomerPayments } from '@features/payments/CustomerPayments'
 import { CustomerProfile } from '@features/profile/CustomerProfile'
 import { NotificationCenter } from '@features/notifications/components/NotificationComponents.jsx'
+import { PaymentCallback } from '@features/payments/PaymentCallback'
 
 // Insurer pages
 import { InsurerDashboard } from '@features/dashboard/InsurerDashboard'
@@ -115,6 +116,9 @@ const AppRoutes = () => {
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<SignUp />} />
+        
+        {/* Payment callback route */}
+        <Route path="/payment/callback" element={<PaymentCallback />} />
         
         {/* Customer routes */}
         <Route path="/customer/*" element={

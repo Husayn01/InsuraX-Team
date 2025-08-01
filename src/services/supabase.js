@@ -23,6 +23,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 
 // Helper functions for common operations
 export const supabaseHelpers = {
+  
   // Auth helpers
   async signUp(email, password, metadata = {}) {
     console.log('🚀 Starting signup process:', email)
@@ -83,7 +84,7 @@ export const supabaseHelpers = {
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single()
+        .maybeSingle()
       
       if (error) {
         console.error('❌ Profile fetch error:', error)
@@ -104,29 +105,42 @@ export const supabaseHelpers = {
       .update(updates)
       .eq('id', userId)
       .select()
-      .single()
+      .maybeSingle()
     
     return { data, error }
   },
 
-  // Enhanced claim helpers with better error handling
+  // Enhanced claim helpers with better error handling and timeout
   async createClaim(claimData) {
+    console.log('Creating claim in database...')
+    
     try {
-      const { data, error } = await supabase
+      // Add timeout wrapper
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Claim creation timed out after 30 seconds')), 30000)
+      )
+      
+      const createPromise = supabase
         .from('claims')
         .insert([claimData])
         .select()
         .single()
       
+      // Race between the actual request and timeout
+      const result = await Promise.race([createPromise, timeoutPromise])
+      
+      const { data, error } = result
+      
       if (error) {
-        console.error('Claim creation error:', error)
-        return { data: null, error }
+        console.error('Supabase error creating claim:', error)
+        throw error
       }
       
       console.log('Claim created successfully:', data.id)
       return { data, error: null }
+      
     } catch (error) {
-      console.error('Unexpected claim creation error:', error)
+      console.error('Failed to create claim:', error)
       return { data: null, error }
     }
   },
@@ -199,47 +213,85 @@ export const supabaseHelpers = {
     return this.updateClaim(claimId, updates)
   },
 
-  // NEW: Transactional claim creation with rollback support
+  // Updated transactional claim creation with better error handling
   async createClaimWithDocuments(claimData, files, userId) {
     let createdClaim = null
     let uploadedFiles = []
 
     try {
-      // Step 1: Create the claim
-      const { data: claim, error: claimError } = await this.createClaim(claimData)
-      if (claimError) throw claimError
+      console.log('Starting claim transaction...')
+      
+      // Ensure claim_data is properly formatted
+      const formattedClaimData = {
+        ...claimData,
+        claim_data: claimData.claim_data || {},
+        documents: claimData.documents || [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }
+      
+      console.log('Formatted claim data:', JSON.stringify(formattedClaimData, null, 2))
+      
+      // Step 1: Create the claim with timeout
+      const { data: claim, error: claimError } = await this.createClaim(formattedClaimData)
+      
+      if (claimError) {
+        console.error('Claim creation failed:', claimError)
+        throw new Error(claimError.message || 'Failed to create claim')
+      }
+      
+      if (!claim) {
+        throw new Error('No claim data returned from database')
+      }
       
       createdClaim = claim
+      console.log('Claim created with ID:', createdClaim.id)
 
       // Step 2: Upload files if provided
       if (files && files.length > 0) {
-        const { documentUploadService } = await import('./documentUpload')
+        console.log(`Uploading ${files.length} files...`)
         
-        const uploadResult = await documentUploadService.uploadMultipleFiles(
-          files,
-          createdClaim.id,
-          userId
-        )
+        try {
+          // Import dynamically to avoid circular dependencies
+          const { documentUploadService } = await import('./documentUpload')
+          
+          const uploadResult = await documentUploadService.uploadMultipleFiles(
+            files,
+            createdClaim.id,
+            userId
+          )
 
-        if (uploadResult.errors.length > 0) {
-          console.warn('Some files failed to upload:', uploadResult.errors)
-        }
-
-        uploadedFiles = uploadResult.uploadedFiles
-
-        // Step 3: Update claim with file references
-        if (uploadedFiles.length > 0) {
-          const { error: updateError } = await this.updateClaim(createdClaim.id, {
-            claim_data: {
-              ...createdClaim.claim_data,
-              documents: uploadedFiles
-            },
-            documents: uploadedFiles.map(f => f.url)
-          })
-
-          if (updateError) {
-            throw new Error('Failed to update claim with documents')
+          if (uploadResult.errors.length > 0) {
+            console.warn('Some files failed to upload:', uploadResult.errors)
           }
+
+          uploadedFiles = uploadResult.uploadedFiles
+          console.log(`Successfully uploaded ${uploadedFiles.length} files`)
+
+          // Step 3: Update claim with file references if any uploaded
+          if (uploadedFiles.length > 0) {
+            const updateData = {
+              documents: uploadedFiles.map(f => f.url),
+              claim_data: {
+                ...createdClaim.claim_data,
+                documents: uploadedFiles
+              },
+              updated_at: new Date().toISOString()
+            }
+            
+            console.log('Updating claim with documents...')
+            const { error: updateError } = await this.updateClaim(createdClaim.id, updateData)
+
+            if (updateError) {
+              console.error('Failed to update claim with documents:', updateError)
+              // Don't throw here - claim is created, just documents not linked
+            } else {
+              console.log('Claim updated with documents successfully')
+            }
+          }
+        } catch (uploadError) {
+          console.error('File upload process failed:', uploadError)
+          // Don't throw - claim is created successfully
         }
       }
 
@@ -254,29 +306,37 @@ export const supabaseHelpers = {
 
       // Rollback: Delete claim if it was created
       if (createdClaim) {
-        await this.deleteClaim(createdClaim.id).catch(err => 
-          console.error('Failed to rollback claim:', err)
-        )
+        console.log('Rolling back claim creation...')
+        try {
+          await this.deleteClaim(createdClaim.id)
+          console.log('Claim rolled back successfully')
+        } catch (rollbackError) {
+          console.error('Failed to rollback claim:', rollbackError)
+        }
       }
 
       // Rollback: Delete uploaded files
       if (uploadedFiles.length > 0) {
-        const { documentUploadService } = await import('./documentUpload')
-        await documentUploadService.deleteMultipleFiles(
-          uploadedFiles.map(f => f.filePath)
-        ).catch(err => 
-          console.error('Failed to cleanup files:', err)
-        )
+        console.log('Cleaning up uploaded files...')
+        try {
+          const { documentUploadService } = await import('./documentUpload')
+          await documentUploadService.deleteMultipleFiles(
+            uploadedFiles.map(f => f.filePath)
+          )
+          console.log('Files cleaned up successfully')
+        } catch (cleanupError) {
+          console.error('Failed to cleanup files:', cleanupError)
+        }
       }
 
       return {
         success: false,
-        error: error.message
+        error: error.message || 'Failed to create claim'
       }
     }
   },
 
-  // NEW: Get claim with related data
+  // Get claim with all related data
   async getClaimWithRelations(claimId) {
     try {
       // Get claim
