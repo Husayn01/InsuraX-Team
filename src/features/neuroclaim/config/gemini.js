@@ -64,14 +64,3 @@ export const delayBetweenAPICalls = async (ms = PROCESSING_CONFIG.apiCallDelay) 
   return new Promise(resolve => setTimeout(resolve, ms));
 };
 
-// Update your claimsOrchestrator to use these settings:
-// In processClaimComplete method, add delays between API calls:
-
-// After extraction
-await delayBetweenAPICalls();
-
-// After fraud detection
-await delayBetweenAPICalls();
-
-// After categorization
-await delayBetweenAPICalls();
