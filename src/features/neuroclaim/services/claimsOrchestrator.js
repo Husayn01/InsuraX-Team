@@ -497,21 +497,29 @@ async extractFromImage(file) {
     if (claims.length === 0) {
       return {
         totalClaims: 0,
+        totalAmount: 0, // Add this
         averageProcessingTime: 0,
         riskDistribution: {},
-        claimTypeDistribution: {},
-        priorityDistribution: {}
+        claimTypeDistribution: {}, // Ensure consistent naming
+        priorityDistribution: {},
+        processingTrend: [] // Add this
       };
     }
 
     const analytics = {
       totalClaims: claims.length,
-      averageProcessingTime: claims.reduce((sum, claim) => sum + (claim.processingTimeMs || 0), 0) / claims.length,
+      totalAmount: claims.reduce((sum, claim) => 
+        sum + (claim.claimData?.estimatedAmount || 0), 0
+      ),
+      averageProcessingTime: claims.reduce((sum, claim) => 
+        sum + (claim.processingTime || 0), 0
+      ) / claims.length,
       riskDistribution: {},
-      claimTypeDistribution: {},
+      claimTypeDistribution: {}, // Changed from claimTypeDistribution
       priorityDistribution: {},
       successfullyProcessed: claims.filter(c => c.status === 'completed').length,
-      failedProcessing: claims.filter(c => c.status === 'failed').length
+      failedProcessing: claims.filter(c => c.status === 'failed').length,
+      processingTrend: [] // Add this
     };
 
     // Calculate distributions
@@ -522,11 +530,10 @@ async extractFromImage(file) {
           (analytics.riskDistribution[claim.fraudAssessment.riskLevel] || 0) + 1;
       }
 
-      // Claim type distribution
-      if (claim.claimData?.claimType) {
-        analytics.claimTypeDistribution[claim.claimData.claimType] = 
-          (analytics.claimTypeDistribution[claim.claimData.claimType] || 0) + 1;
-      }
+      // Claim type distribution - ensure we're checking the right path
+      const claimType = claim.claimData?.claimType || claim.claim_data?.claimType || 'unknown';
+      analytics.claimTypeDistribution[claimType] = 
+        (analytics.claimTypeDistribution[claimType] || 0) + 1;
 
       // Priority distribution
       if (claim.categorization?.priority?.level) {
@@ -535,9 +542,10 @@ async extractFromImage(file) {
       }
     });
 
+    console.log('Generated Analytics:', analytics); // Debug log
+
     return analytics;
   }
-
   generateProcessingId() {
     return `CLM-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
@@ -770,16 +778,25 @@ async getHistoricalClaims(userId, limit = 50) {
 
 async getAnalytics(userId) {
   try {
-    const { supabase } = await import('../../../services/supabase.js');
+    const { supabaseHelpers } = await import('../../../services/supabase.js');
     
     // Get all claims for analytics
-    const { data: claims, error } = await supabase
-      .from('neuroclaim_sessions')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('status', 'completed');
+    const { data: claims, error } = await supabaseHelpers.getNeuroClaimSessions(userId, {
+      status: 'completed'
+    });
 
     if (error) throw error;
+
+    if (!claims || claims.length === 0) {
+      return {
+        totalClaims: 0,
+        totalAmount: 0,
+        riskDistribution: {},
+        averageProcessingTime: 0,
+        claimTypeDistribution: {}, // Changed from claimTypes
+        processingTrend: []
+      };
+    }
 
     // Calculate analytics
     const totalClaims = claims.length;
@@ -797,26 +814,36 @@ async getAnalytics(userId) {
       sum + claim.processing_time_ms, 0
     ) / totalClaims || 0;
 
-    const claimTypes = claims.reduce((acc, claim) => {
+    // Fix: Ensure we're building claimTypeDistribution correctly
+    const claimTypeDistribution = claims.reduce((acc, claim) => {
       const type = claim.claim_data?.claimType || 'unknown';
       acc[type] = (acc[type] || 0) + 1;
       return acc;
     }, {});
+
+    console.log('Claim Type Distribution:', claimTypeDistribution); // Debug log
 
     return {
       totalClaims,
       totalAmount,
       riskDistribution,
       averageProcessingTime,
-      claimTypes,
+      claimTypeDistribution, // Changed from claimTypes
       processingTrend: this.calculateProcessingTrend(claims)
     };
   } catch (error) {
     console.error('Failed to generate analytics:', error);
-    return this.generateAnalytics(); // Fallback to in-memory
+    // Return empty analytics structure
+    return {
+      totalClaims: 0,
+      totalAmount: 0,
+      riskDistribution: {},
+      averageProcessingTime: 0,
+      claimTypeDistribution: {},
+      processingTrend: []
+    };
   }
 }
-
 calculateProcessingTrend(claims) {
   // Group by date
   const trend = claims.reduce((acc, claim) => {

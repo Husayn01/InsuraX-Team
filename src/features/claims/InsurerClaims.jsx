@@ -73,7 +73,7 @@ export const InsurerClaims = () => {
         ...claim,
         priority: ['urgent', 'high', 'normal', 'low'][Math.floor(Math.random() * 4)],
         fraudScore: Math.random(),
-        assignedTo: ['John Doe', 'Jane Smith', 'Mike Johnson'][Math.floor(Math.random() * 3)],
+        assignedTo: ['Sani Ismail', 'Eze Chukwudi', 'Micheal Steven'][Math.floor(Math.random() * 3)],
         processingDays: Math.floor(Math.random() * 10) + 1
       }))
       
@@ -548,9 +548,9 @@ export const InsurerClaims = () => {
                   <td className="px-6 py-4">
                     <div>
                       <p className="text-sm font-medium text-gray-100">
-                        {claim.claim_data?.claimantName || 'Unknown'}
+                        {claim.claim_data?.claimantName || claim.assignedTo}
                       </p>
-                      <p className="text-xs text-gray-400">{claim.assignedTo}</p>
+                      {/* <p className="text-xs text-gray-400">Assigned to: {claim.assignedTo}</p> */}
                     </div>
                   </td>
                   <td className="px-6 py-4">
@@ -560,7 +560,7 @@ export const InsurerClaims = () => {
                   </td>
                   <td className="px-6 py-4">
                     <span className="text-sm font-semibold text-white">
-                      ${claim.claim_data?.estimatedAmount?.toLocaleString() || '0'}
+                      ₦{claim.claim_data?.estimatedAmount?.toLocaleString() || '0'}
                     </span>
                   </td>
                   <td className="px-6 py-4">{getStatusBadge(claim.status)}</td>

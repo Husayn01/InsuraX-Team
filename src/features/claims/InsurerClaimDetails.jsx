@@ -608,10 +608,30 @@ const handleStatusUpdate = async (newStatus) => {
               </h3>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <p className="text-sm text-gray-400">Category</p>
                 <div>
-                  <p className="text-sm text-gray-400">Category</p>
-                  <p className="text-white font-medium capitalize">{aiAnalysis.categorization?.category || 'N/A'}</p>
+                  {aiAnalysis.categorization?.category ? (
+                    <>
+                      <p className="text-white font-medium capitalize">
+                        {aiAnalysis.categorization.category.primary || 'N/A'}
+                      </p>
+                      {aiAnalysis.categorization.category.secondary && (
+                        <p className="text-sm text-gray-400 capitalize">
+                          {aiAnalysis.categorization.category.secondary}
+                        </p>
+                      )}
+                      {aiAnalysis.categorization.category.complexity && (
+                        <Badge className="mt-1 bg-purple-500/20 text-purple-400 text-xs">
+                          {aiAnalysis.categorization.category.complexity}
+                        </Badge>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-white font-medium">N/A</p>
+                  )}
                 </div>
+              </div>
                 <div>
                   <p className="text-sm text-gray-400">Urgency</p>
                   <Badge className={`
@@ -641,22 +661,88 @@ const handleStatusUpdate = async (newStatus) => {
 
           {/* Internal Memo */}
           {aiAnalysis.internalMemo && (
-            <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50">
-              <CardBody>
-                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                  <MessageSquare className="w-5 h-5 text-cyan-400" />
-                  AI Generated Internal Memo
-                </h3>
-                <div className="prose prose-invert max-w-none">
-                  <div className="bg-gray-700/30 rounded-lg p-4">
-                    <pre className="whitespace-pre-wrap text-sm text-gray-300">
-                      {aiAnalysis.internalMemo}
-                    </pre>
+          <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50">
+            <CardBody>
+              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-cyan-400" />
+                AI Generated Internal Memo
+              </h3>
+              <div className="space-y-4">
+                {/* Memo Header */}
+                <div className="bg-gray-700/30 rounded-lg p-4 space-y-2">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-sm text-gray-400">To:</p>
+                      <p className="text-white font-medium">{aiAnalysis.internalMemo.to || 'Claims Management Team'}</p>
+                    </div>
+                    <Badge className={`
+                      ${aiAnalysis.internalMemo.priority === 'urgent' ? 'bg-red-500/20 text-red-400' :
+                        aiAnalysis.internalMemo.priority === 'high' ? 'bg-orange-500/20 text-orange-400' :
+                        aiAnalysis.internalMemo.priority === 'normal' ? 'bg-blue-500/20 text-blue-400' :
+                        'bg-gray-500/20 text-gray-400'}
+                    `}>
+                      {aiAnalysis.internalMemo.priority || 'normal'}
+                    </Badge>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-400">Subject:</p>
+                    <p className="text-white font-medium">{aiAnalysis.internalMemo.subject || 'Claim Review'}</p>
                   </div>
                 </div>
-              </CardBody>
-            </Card>
-          )}
+
+                {/* Summary */}
+                {aiAnalysis.internalMemo.summary && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-400 mb-2">Summary</h4>
+                    <p className="text-gray-300">{aiAnalysis.internalMemo.summary}</p>
+                  </div>
+                )}
+
+                {/* Key Findings */}
+                {aiAnalysis.internalMemo.keyFindings && aiAnalysis.internalMemo.keyFindings.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-400 mb-2">Key Findings</h4>
+                    <ul className="list-disc list-inside space-y-1">
+                      {aiAnalysis.internalMemo.keyFindings.map((finding, idx) => (
+                        <li key={idx} className="text-gray-300">{finding}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Recommendations */}
+                {aiAnalysis.internalMemo.recommendations && aiAnalysis.internalMemo.recommendations.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-400 mb-2">Recommendations</h4>
+                    <ul className="list-disc list-inside space-y-1">
+                      {aiAnalysis.internalMemo.recommendations.map((rec, idx) => (
+                        <li key={idx} className="text-gray-300">{rec}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Required Actions */}
+                {aiAnalysis.internalMemo.requiredActions && aiAnalysis.internalMemo.requiredActions.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-400 mb-2">Required Actions</h4>
+                    <div className="space-y-2">
+                      {aiAnalysis.internalMemo.requiredActions.map((action, idx) => (
+                        <div key={idx} className="bg-gray-700/30 rounded-lg p-3">
+                          <p className="text-white font-medium">{action.action}</p>
+                          <div className="flex items-center gap-4 mt-1 text-sm text-gray-400">
+                            <span>Responsible: {action.responsible}</span>
+                            <span>Deadline: {action.deadline}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CardBody>
+          </Card>
+        )}
         </>
       ) : (
         <Card className="bg-gray-800/50 backdrop-blur-sm border-gray-700/50">

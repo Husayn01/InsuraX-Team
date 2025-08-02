@@ -44,14 +44,34 @@ export const ClaimsProcessing = () => {
   const enhancedSystem = new ClaimsProcessingSystem();
   const loadHistoricalData = async () => {
     try {
+      console.log('Loading historical data for user:', user.id);
       const historicalClaims = await enhancedSystem.getHistoricalClaims(user.id);
+      console.log('Historical claims loaded:', historicalClaims.length);
       setAllClaims(historicalClaims);
+      
       const analytics = await enhancedSystem.getAnalytics(user.id);
+      console.log('Analytics loaded:', analytics);
       setAnalytics(analytics);
     } catch (error) {
       console.error('Failed to load historical data:', error);
+      // Set default analytics structure
+      setAnalytics({
+        totalClaims: 0,
+        totalAmount: 0,
+        riskDistribution: {},
+        averageProcessingTime: 0,
+        claimTypeDistribution: {},
+        processingTrend: []
+      });
     }
   };
+
+// Make sure this is called when the component mounts and when user changes
+  useEffect(() => {
+    if (user?.id && activeTab === 'analytics') {
+      loadHistoricalData();
+    }
+  }, [user?.id, activeTab]);
 
   useEffect(() => {
   const checkApiKey = async () => {
