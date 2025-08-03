@@ -7,6 +7,7 @@ import {
   Receipt, Filter, Search, Loader2, Info, Phone, QrCode, 
   Wallet
 } from 'lucide-react'
+import { NairaIcon } from '@shared/components'
 import { useAuth } from '@contexts/AuthContext'
 import { DashboardLayout, PageHeader } from '@shared/layouts'
 import { 
@@ -475,7 +476,7 @@ export const CustomerPayments = () => {
             <div className="relative">
               <div className="flex items-center justify-between mb-4">
                 <div className="p-3 bg-emerald-500/20 rounded-xl">
-                  <DollarSign className="w-6 h-6 text-emerald-400" />
+                  <NairaIcon className="w-6 h-6 text-emerald-400" />
                 </div>
                 <TrendingUp className="w-5 h-5 text-emerald-400" />
               </div>
