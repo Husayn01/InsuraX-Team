@@ -72,7 +72,7 @@ serve(async (req) => {
           ]
         },
         callback_url: callback_url || `${Deno.env.get('FRONTEND_URL')}/payment/callback`,
-        channels: channels || ['card', 'bank', 'ussd', 'mobile_money']
+        channels: channels || ['card', 'bank', 'ussd', 'mobile_money', 'qr']
       }),
     })
 
