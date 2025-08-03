@@ -4,7 +4,8 @@ import {
   AlertCircle, DollarSign, Calendar, TrendingUp, 
   Smartphone, Building, Bitcoin, ArrowUpRight,
   ArrowDownRight, Activity, Zap, ChevronRight,
-  Receipt, Filter, Search, Loader2, Info
+  Receipt, Filter, Search, Loader2, Info, Phone, QrCode, 
+  Wallet
 } from 'lucide-react'
 import { useAuth } from '@contexts/AuthContext'
 import { DashboardLayout, PageHeader } from '@shared/layouts'
@@ -40,6 +41,39 @@ export const CustomerPayments = () => {
   })
   const [searchTerm, setSearchTerm] = useState('')
   const [filter, setFilter] = useState('all')
+
+  const paymentMethods = [
+    { 
+      value: 'card', 
+      label: 'Debit/Credit Card',
+      icon: CreditCard,
+      description: 'Visa, Mastercard, Verve'
+    },
+    { 
+      value: 'bank_transfer', 
+      label: 'Bank Transfer',
+      icon: Building,
+      description: 'Direct bank transfer'
+    },
+    { 
+      value: 'mobile_money', 
+      label: 'Mobile Money',
+      icon: Smartphone,
+      description: 'MTN, Airtel, 9mobile'
+    },
+    { 
+      value: 'ussd', 
+      label: 'USSD Banking',
+      icon: Phone,
+      description: 'Dial *xxx# to pay'
+    },
+    { 
+      value: 'qr', 
+      label: 'QR Code',
+      icon: QrCode,
+      description: 'Scan to pay with your bank app'
+    }
+  ]
 
   useEffect(() => {
     fetchPayments()
@@ -90,8 +124,8 @@ export const CustomerPayments = () => {
       monthlyPayments[month] = (monthlyPayments[month] || 0) + p.amount
     })
     const monthlyAverage = Object.keys(monthlyPayments).length > 0 
-  ? Object.values(monthlyPayments).reduce((a, b) => a + b, 0) / Object.keys(monthlyPayments).length 
-  : 0
+      ? Object.values(monthlyPayments).reduce((a, b) => a + b, 0) / Object.keys(monthlyPayments).length 
+      : 0
     
     // Year to date
     const currentYear = new Date().getFullYear()
@@ -288,6 +322,104 @@ export const CustomerPayments = () => {
       style: 'currency',
       currency: 'NGN'
     }).format(amount)
+  }
+
+  // Enhanced payment method selector component
+  const PaymentMethodSelector = ({ value, onChange }) => {
+    return (
+      <div className="space-y-3">
+        <label className="block text-sm font-medium text-gray-300 mb-2">
+          Select Payment Method
+        </label>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {paymentMethods.map((method) => {
+            const Icon = method.icon
+            return (
+              <button
+                key={method.value}
+                type="button"
+                onClick={() => onChange(method.value)}
+                className={`
+                  relative flex items-start p-4 border rounded-lg transition-all
+                  ${value === method.value 
+                    ? 'border-cyan-500 bg-cyan-500/10 ring-1 ring-cyan-500' 
+                    : 'border-gray-600 bg-gray-700/50 hover:bg-gray-700'
+                  }
+                `}
+              >
+                <div className="flex items-center">
+                  <div className={`
+                    w-12 h-12 rounded-lg flex items-center justify-center
+                    ${value === method.value 
+                      ? 'bg-cyan-500/20 text-cyan-400' 
+                      : 'bg-gray-600/50 text-gray-400'
+                    }
+                  `}>
+                    <Icon className="w-6 h-6" />
+                  </div>
+                  <div className="ml-3 text-left">
+                    <h4 className="text-sm font-medium text-white">
+                      {method.label}
+                    </h4>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {method.description}
+                    </p>
+                  </div>
+                </div>
+                {value === method.value && (
+                  <div className="absolute top-2 right-2">
+                    <CheckCircle className="w-5 h-5 text-cyan-500" />
+                  </div>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  // Add method-specific instructions
+  const PaymentInstructions = ({ method }) => {
+    const instructions = {
+      ussd: (
+        <Alert variant="info" className="mt-4">
+          <Phone className="w-4 h-4" />
+          <div>
+            <p className="font-semibold">USSD Payment Instructions:</p>
+            <ol className="text-sm mt-1 space-y-1">
+              <li>1. You'll receive a USSD code after clicking "Pay Now"</li>
+              <li>2. Dial the code on your registered phone</li>
+              <li>3. Follow the prompts to complete payment</li>
+            </ol>
+          </div>
+        </Alert>
+      ),
+      qr: (
+        <Alert variant="info" className="mt-4">
+          <QrCode className="w-4 h-4" />
+          <div>
+            <p className="font-semibold">QR Code Payment:</p>
+            <p className="text-sm mt-1">
+              A QR code will be displayed. Open your mobile banking app and scan to pay.
+            </p>
+          </div>
+        </Alert>
+      ),
+      bank_transfer: (
+        <Alert variant="info" className="mt-4">
+          <Building className="w-4 h-4" />
+          <div>
+            <p className="font-semibold">Bank Transfer:</p>
+            <p className="text-sm mt-1">
+              You'll receive bank account details to complete the transfer.
+            </p>
+          </div>
+        </Alert>
+      )
+    }
+    
+    return instructions[method] || null
   }
 
   if (loading) {
@@ -539,11 +671,11 @@ export const CustomerPayments = () => {
           isOpen={showPaymentModal}
           onClose={() => {
             setShowPaymentModal(false)
-            setError(null) // Clear error on close
+            setError(null)
           }}
           title="Make a Payment"
         >
-          <form onSubmit={handlePaymentSubmit} className="space-y-4">
+          <form onSubmit={handlePaymentSubmit} className="space-y-6">
             {/* Error Alert */}
             {error && (
               <Alert variant="error" className="mb-4">
@@ -563,55 +695,36 @@ export const CustomerPayments = () => {
               step="0.01"
               className="bg-gray-700/50 border-gray-600 text-white"
             />
-            
-            <FormSelect
-              label="Payment Method"
+
+            {/* Replace the existing Select component with this */}
+            <PaymentMethodSelector 
               value={paymentForm.paymentMethod}
-              onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}
-              options={[
-                { value: 'card', label: 'Credit/Debit Card' },
-                { value: 'mobile_money', label: 'Mobile Money' },
-                { value: 'bank_transfer', label: 'Bank Transfer' }
-              ]}
-              className="bg-gray-700/50 border-gray-600 text-white"
-              required
+              onChange={(method) => setPaymentForm({ ...paymentForm, paymentMethod: method })}
             />
-            
+
+            <PaymentInstructions method={paymentForm.paymentMethod} />
+
             <Input
               label="Description"
-              type="text"
               value={paymentForm.description}
               onChange={(e) => setPaymentForm({ ...paymentForm, description: e.target.value })}
               placeholder="e.g., Monthly premium payment"
-              required
               className="bg-gray-700/50 border-gray-600 text-white"
             />
 
-            {/* Payment Notice */}
-            <Alert variant="info" className="text-sm">
-              <Info className="w-4 h-4" />
-              <span>You will be redirected to Paystack to complete your payment securely.</span>
-            </Alert>
-            
             <div className="flex gap-3 pt-4">
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => {
-                  setShowPaymentModal(false)
-                  setError(null)
-                }}
-                disabled={paymentLoading}
+                onClick={() => setShowPaymentModal(false)}
                 className="flex-1"
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
-                variant="primary"
-                loading={paymentLoading}
                 disabled={paymentLoading}
-                className="flex-1 bg-gradient-to-r from-emerald-500 to-green-600"
+                className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600"
               >
                 {paymentLoading ? (
                   <>
@@ -619,7 +732,10 @@ export const CustomerPayments = () => {
                     Processing...
                   </>
                 ) : (
-                  'Process Payment'
+                  <>
+                    <CreditCard className="w-4 h-4 mr-2" />
+                    Pay Now
+                  </>
                 )}
               </Button>
             </div>
@@ -628,7 +744,7 @@ export const CustomerPayments = () => {
       )}
 
       {/* Add custom animations */}
-      <style jsx>{`
+      <style>{`
         @keyframes float {
           0%, 100% { transform: translateY(0px); }
           50% { transform: translateY(-20px); }
