@@ -3,6 +3,34 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
+// Add these constants and methods to supabase.js
+
+// Define valid status transitions
+const CLAIM_STATUS_TRANSITIONS = {
+  submitted: ['processing', 'rejected'],
+  processing: ['under_review', 'approved', 'rejected', 'additional_info_required'],
+  under_review: ['approved', 'rejected', 'additional_info_required'],
+  additional_info_required: ['processing', 'rejected'],
+  approved: ['settled'],
+  rejected: ['disputed', 'closed'],
+  disputed: ['processing', 'closed'],
+  settled: ['closed'],
+  closed: [] // Terminal state
+}
+
+// Status metadata for better UX
+const CLAIM_STATUS_META = {
+  submitted: { label: 'Submitted', color: 'blue', icon: 'clock' },
+  processing: { label: 'Processing', color: 'cyan', icon: 'activity' },
+  under_review: { label: 'Under Review', color: 'purple', icon: 'eye' },
+  additional_info_required: { label: 'Info Required', color: 'amber', icon: 'alert-circle' },
+  approved: { label: 'Approved', color: 'emerald', icon: 'check-circle' },
+  rejected: { label: 'Rejected', color: 'red', icon: 'x-circle' },
+  disputed: { label: 'Disputed', color: 'orange', icon: 'alert-triangle' },
+  settled: { label: 'Settled', color: 'green', icon: 'dollar-sign' },
+  closed: { label: 'Closed', color: 'gray', icon: 'archive' }
+}
+
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('Missing Supabase environment variables')
 }
@@ -111,39 +139,31 @@ export const supabaseHelpers = {
   },
 
   // Enhanced claim helpers with better error handling and timeout
+  // Enhanced claim helpers with better error handling (no timeout)
   async createClaim(claimData) {
-    console.log('Creating claim in database...')
-    
-    try {
-      // Add timeout wrapper
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Claim creation timed out after 30 seconds')), 30000)
-      )
+      console.log('Creating claim in database...')
       
-      const createPromise = supabase
-        .from('claims')
-        .insert([claimData])
-        .select()
-        .single()
-      
-      // Race between the actual request and timeout
-      const result = await Promise.race([createPromise, timeoutPromise])
-      
-      const { data, error } = result
-      
-      if (error) {
-        console.error('Supabase error creating claim:', error)
-        throw error
+      try {
+        // Remove the timeout wrapper - let Supabase handle its own timeouts
+        const { data, error } = await supabase
+          .from('claims')
+          .insert([claimData])
+          .select()
+          .single()
+        
+        if (error) {
+          console.error('Supabase error creating claim:', error)
+          throw error
+        }
+        
+        console.log('Claim created successfully:', data.id)
+        return { data, error: null }
+        
+      } catch (error) {
+        console.error('Failed to create claim:', error)
+        return { data: null, error }
       }
-      
-      console.log('Claim created successfully:', data.id)
-      return { data, error: null }
-      
-    } catch (error) {
-      console.error('Failed to create claim:', error)
-      return { data: null, error }
-    }
-  },
+    },
 
   async updateClaim(claimId, updates) {
     try {
@@ -213,128 +233,131 @@ export const supabaseHelpers = {
     return this.updateClaim(claimId, updates)
   },
 
-  // Updated transactional claim creation with better error handling
-  async createClaimWithDocuments(claimData, files, userId) {
-    let createdClaim = null
-    let uploadedFiles = []
+  // Simplified claim creation with proper error handling
+    async createClaimWithDocuments(claimData, files, userId) {
+      let createdClaim = null
+      let uploadedFiles = []
+      const uploadErrors = []
 
-    try {
-      console.log('Starting claim transaction...')
-      
-      // Ensure claim_data is properly formatted
-      const formattedClaimData = {
-        ...claimData,
-        claim_data: claimData.claim_data || {},
-        documents: claimData.documents || [],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
-      
-      console.log('Formatted claim data:', JSON.stringify(formattedClaimData, null, 2))
-      
-      // Step 1: Create the claim with timeout
-      const { data: claim, error: claimError } = await this.createClaim(formattedClaimData)
-      
-      if (claimError) {
-        console.error('Claim creation failed:', claimError)
-        throw new Error(claimError.message || 'Failed to create claim')
-      }
-      
-      if (!claim) {
-        throw new Error('No claim data returned from database')
-      }
-      
-      createdClaim = claim
-      console.log('Claim created with ID:', createdClaim.id)
-
-      // Step 2: Upload files if provided
-      if (files && files.length > 0) {
-        console.log(`Uploading ${files.length} files...`)
+      try {
+        console.log('Starting claim submission...')
         
-        try {
-          // Import dynamically to avoid circular dependencies
-          const { documentUploadService } = await import('./documentUpload')
+        // Step 1: Format and create the claim first
+        const formattedClaimData = {
+          ...claimData,
+          claim_data: claimData.claim_data || {},
+          documents: [], // Start with empty documents array
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }
+        
+        // Create claim with proper timeout handling
+        const { data: claim, error: claimError } = await this.createClaim(formattedClaimData)
+        
+        if (claimError || !claim) {
+          throw new Error(claimError?.message || 'Failed to create claim')
+        }
+        
+        createdClaim = claim
+        console.log('Claim created successfully:', createdClaim.id)
+
+        // Step 2: Upload documents if provided (non-blocking for failed uploads)
+        if (files && files.length > 0) {
+          console.log(`Uploading ${files.length} documents...`)
           
-          const uploadResult = await documentUploadService.uploadMultipleFiles(
-            files,
-            createdClaim.id,
-            userId
-          )
-
-          if (uploadResult.errors.length > 0) {
-            console.warn('Some files failed to upload:', uploadResult.errors)
-          }
-
-          uploadedFiles = uploadResult.uploadedFiles
-          console.log(`Successfully uploaded ${uploadedFiles.length} files`)
-
-          // Step 3: Update claim with file references if any uploaded
-          if (uploadedFiles.length > 0) {
-            const updateData = {
-              documents: uploadedFiles.map(f => f.url),
-              claim_data: {
-                ...createdClaim.claim_data,
-                documents: uploadedFiles
-              },
-              updated_at: new Date().toISOString()
-            }
+          try {
+            const { documentUploadService } = await import('./documentUpload')
             
-            console.log('Updating claim with documents...')
-            const { error: updateError } = await this.updateClaim(createdClaim.id, updateData)
+            // Upload with progress tracking
+            const uploadResult = await documentUploadService.uploadMultipleFiles(
+              files,
+              createdClaim.id,
+              userId,
+              (progress) => {
+                console.log(`Upload progress: ${progress.current}/${progress.total}`)
+              }
+            )
 
-            if (updateError) {
-              console.error('Failed to update claim with documents:', updateError)
-              // Don't throw here - claim is created, just documents not linked
-            } else {
-              console.log('Claim updated with documents successfully')
+            uploadedFiles = uploadResult.uploadedFiles
+            
+            // Track any upload errors
+            if (uploadResult.errors.length > 0) {
+              uploadErrors.push(...uploadResult.errors)
+              console.warn('Some files failed to upload:', uploadResult.errors)
             }
+
+            // Step 3: Update claim with successfully uploaded files
+            if (uploadedFiles.length > 0) {
+              const updateData = {
+                documents: uploadedFiles.map(f => f.url),
+                claim_data: {
+                  ...createdClaim.claim_data,
+                  uploadedDocuments: uploadedFiles.map(f => ({
+                    fileName: f.fileName,
+                    fileType: f.fileType,
+                    fileSize: f.fileSize,
+                    url: f.url,
+                    uploadedAt: f.uploadedAt
+                  }))
+                }
+              }
+              
+              const { error: updateError } = await this.updateClaim(createdClaim.id, updateData)
+              
+              if (updateError) {
+                console.error('Failed to link documents to claim:', updateError)
+                // Don't fail - claim exists, just documents not linked
+              }
+            }
+          } catch (uploadError) {
+            console.error('Document upload process error:', uploadError)
+            // Continue - claim was created successfully
+            uploadErrors.push({
+              fileName: 'All files',
+              error: uploadError.message
+            })
           }
-        } catch (uploadError) {
-          console.error('File upload process failed:', uploadError)
-          // Don't throw - claim is created successfully
         }
-      }
 
-      return {
-        success: true,
-        claim: createdClaim,
-        uploadedFiles
-      }
-
-    } catch (error) {
-      console.error('Transaction failed:', error)
-
-      // Rollback: Delete claim if it was created
-      if (createdClaim) {
-        console.log('Rolling back claim creation...')
-        try {
-          await this.deleteClaim(createdClaim.id)
-          console.log('Claim rolled back successfully')
-        } catch (rollbackError) {
-          console.error('Failed to rollback claim:', rollbackError)
+        // Return success with any warnings
+        return {
+          success: true,
+          claim: createdClaim,
+          uploadedFiles,
+          uploadErrors,
+          warning: uploadErrors.length > 0 
+            ? `Claim created but ${uploadErrors.length} file(s) failed to upload` 
+            : null
         }
-      }
 
-      // Rollback: Delete uploaded files
-      if (uploadedFiles.length > 0) {
-        console.log('Cleaning up uploaded files...')
-        try {
-          const { documentUploadService } = await import('./documentUpload')
-          await documentUploadService.deleteMultipleFiles(
-            uploadedFiles.map(f => f.filePath)
-          )
-          console.log('Files cleaned up successfully')
-        } catch (cleanupError) {
-          console.error('Failed to cleanup files:', cleanupError)
+      } catch (error) {
+        console.error('Claim submission failed:', error)
+
+        // Clean up if claim was created
+        if (createdClaim) {
+          try {
+            await this.deleteClaim(createdClaim.id)
+            console.log('Claim rolled back')
+          } catch (rollbackError) {
+            console.error('Rollback failed:', rollbackError)
+          }
         }
-      }
 
-      return {
-        success: false,
-        error: error.message || 'Failed to create claim'
+        // Clean up any uploaded files
+        if (uploadedFiles.length > 0) {
+          try {
+            const { documentUploadService } = await import('./documentUpload')
+            await documentUploadService.deleteMultipleFiles(
+              uploadedFiles.map(f => f.filePath)
+            )
+          } catch (cleanupError) {
+            console.error('File cleanup failed:', cleanupError)
+          }
+        }
+
+        throw error
       }
-    }
-  },
+    },
 
   // Get claim with all related data
   async getClaimWithRelations(claimId) {
@@ -663,6 +686,120 @@ export const supabaseHelpers = {
     )
     
     return subscription.subscribe()
+  },
+
+  // Add this enhanced updateClaimStatus method to supabaseHelpers
+  async updateClaimStatus(claimId, newStatus, additionalData = {}) {
+    try {
+      // Validate the new status
+      if (!CLAIM_STATUS_META[newStatus]) {
+        throw new Error(`Invalid status: ${newStatus}`)
+      }
+
+      // Get current claim to check current status
+      const { data: currentClaim, error: fetchError } = await this.getClaim(claimId)
+      
+      if (fetchError || !currentClaim) {
+        throw new Error('Claim not found')
+      }
+
+      const currentStatus = currentClaim.status
+      const validTransitions = CLAIM_STATUS_TRANSITIONS[currentStatus] || []
+
+      // Check if transition is valid
+      if (!validTransitions.includes(newStatus)) {
+        throw new Error(
+          `Invalid status transition from '${currentStatus}' to '${newStatus}'. ` +
+          `Valid transitions: ${validTransitions.join(', ') || 'none'}`
+        )
+      }
+
+      // Create audit trail entry
+      const auditEntry = {
+        timestamp: new Date().toISOString(),
+        action: 'status_change',
+        from_status: currentStatus,
+        to_status: newStatus,
+        user_id: additionalData.updated_by || null,
+        details: additionalData.audit_details || {}
+      }
+
+      // Prepare update data
+      const updateData = {
+        status: newStatus,
+        updated_at: new Date().toISOString(),
+        ...additionalData,
+        claim_data: {
+          ...currentClaim.claim_data,
+          ...(additionalData.claim_data || {}),
+          audit_trail: [
+            ...(currentClaim.claim_data?.audit_trail || []),
+            auditEntry
+          ]
+        }
+      }
+
+      // Remove fields that shouldn't be in the update
+      delete updateData.updated_by
+      delete updateData.audit_details
+
+      // Perform the update
+      const { data: updatedClaim, error: updateError } = await this.updateClaim(
+        claimId, 
+        updateData
+      )
+
+      if (updateError) {
+        throw updateError
+      }
+
+      // Create notification for status change
+      if (currentClaim.customer_id) {
+        const statusMeta = CLAIM_STATUS_META[newStatus]
+        await this.createNotification({
+          user_id: currentClaim.customer_id,
+          type: 'claim_update',
+          title: `Claim ${statusMeta.label}`,
+          message: this.getStatusChangeMessage(newStatus, currentClaim.claim_data?.claimNumber),
+          color: statusMeta.color,
+          icon: statusMeta.icon,
+          data: {
+            claimId: claimId,
+            previousStatus: currentStatus,
+            newStatus: newStatus
+          }
+        })
+      }
+
+      return { data: updatedClaim, error: null }
+    } catch (error) {
+      console.error('Status update error:', error)
+      return { data: null, error }
+    }
+  },
+
+  // Helper method to generate status change messages
+  getStatusChangeMessage(status, claimNumber) {
+    const messages = {
+      processing: `Your claim ${claimNumber} is now being processed by our team.`,
+      under_review: `Your claim ${claimNumber} is under detailed review.`,
+      additional_info_required: `We need additional information to process claim ${claimNumber}.`,
+      approved: `Great news! Your claim ${claimNumber} has been approved.`,
+      rejected: `Your claim ${claimNumber} has been reviewed. Please check the details for more information.`,
+      disputed: `Your dispute for claim ${claimNumber} has been received and will be reviewed.`,
+      settled: `Your claim ${claimNumber} has been settled and payment processed.`,
+      closed: `Claim ${claimNumber} has been closed.`
+    }
+    return messages[status] || `Claim ${claimNumber} status updated to ${status}.`
+  },
+
+  // Export the constants for use in other components
+  getStatusTransitions() {
+    return CLAIM_STATUS_TRANSITIONS
+  },
+
+  getStatusMeta() {
+    return CLAIM_STATUS_META
   },
 
   // NeuroClaim helpers

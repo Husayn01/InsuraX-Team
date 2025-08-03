@@ -6,8 +6,7 @@ import {
   Settings, ChevronDown, Activity, 
 } from 'lucide-react'
 import { useAuth } from '@contexts/AuthContext'
-// Temporarily comment out the NotificationBell import
-// import { NotificationBell } from '@features/notifications/components/NotificationComponents'
+import { NotificationBell } from '@features/notifications/components/NotificationComponents'
 
 export const DashboardLayout = ({ children }) => {
   const { user, profile, signOut, isCustomer, isInsurer } = useAuth()
@@ -176,14 +175,8 @@ const handleSignOut = async () => {
                   <span>Last activity: 2 minutes ago</span>
                 </div>
 
-                {/* Notifications - Temporarily replaced with Bell icon */}
                 {/* <NotificationBell /> */}
-                <button className="relative p-2 text-gray-400 hover:text-white transition-colors">
-                  <Bell className="w-5 h-5" />
-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
-                    3
-                  </span>
-                </button>
+                <NotificationBell />
 
                 {/* User menu */}
                 <div className="relative">

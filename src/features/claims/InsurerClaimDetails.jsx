@@ -207,82 +207,90 @@ const verifyBankAccount = async () => {
   }
 }
 
-const handleStatusUpdate = async (newStatus) => {
-  setUpdating(true)
-  setError(null)
-  
-  try {
-    const updateData = {
-      updated_by: user.id
-    }
+  const handleStatusUpdate = async (newStatus) => {
+    setUpdating(true)
+    setError(null)
     
-    if (newStatus === 'rejected') {
-      if (!rejectionReason || !comment) {
-        setError('Please provide rejection reason and comment')
-        setUpdating(false)
-        return
-      }
-      updateData.rejection_reason = rejectionReason
-      updateData.rejection_comment = comment
-    }
-    
-    if (newStatus === 'approved') {
-      // Validate bank details for bank transfer
-      if (paymentMethod === 'bank_transfer') {
-        if (!bankDetails.account_name || bankDetails.account_name.trim() === '') {
-          // Reset bank details and show modal
-          setBankDetails({
-            bank_code: '',
-            account_number: '',
-            account_name: ''
-          })
-          setShowBankDetailsModal(true)
-          setUpdating(false)
-          return
-        }
-      }
-        
-        const claimAmount = parseFloat(claim.claim_data?.estimatedAmount || 0)
-        const deductibleAmount = parseFloat(deductible || 0)
-        const settlementAmt = parseFloat(settlementAmount || claimAmount)
-        const finalSettlement = settlementAmt - deductibleAmount
-        
-        updateData.claim_data = {
-          ...claim.claim_data,
-          approved_amount: finalSettlement,
-          settlement_amount: finalSettlement,
-          deductible: deductibleAmount,
-          payment_method: paymentMethod,
-          approved_by: user.id,
-          approved_at: new Date().toISOString(),
-          bank_details: paymentMethod === 'bank_transfer' ? bankDetails : null
+    try {
+      // Prepare additional data based on status
+      let additionalData = {
+        updated_by: user.id,
+        audit_details: {
+          action: `Status changed to ${newStatus}`,
+          performed_by: user.email
         }
       }
       
-      if (newStatus === 'additional_info_required') {
-        updateData.info_request = comment
+      // Handle status-specific data
+      switch (newStatus) {
+        case 'approved':
+          // Validate settlement amount
+          const amount = parseFloat(settlementAmount)
+          if (!amount || amount <= 0) {
+            throw new Error('Please enter a valid settlement amount')
+          }
+          
+          additionalData.settlement_amount = amount
+          additionalData.settlement_status = 'pending'
+          additionalData.claim_data = {
+            settlement_amount: amount,
+            deductible: parseFloat(deductible) || 0,
+            payment_method: paymentMethod,
+            approved_by: user.id,
+            approved_at: new Date().toISOString(),
+            bank_details: paymentMethod === 'bank_transfer' ? bankDetails : null
+          }
+          break
+          
+        case 'rejected':
+          if (!rejectionReason) {
+            throw new Error('Please select a rejection reason')
+          }
+          additionalData.rejection_reason = rejectionReason
+          additionalData.rejection_comment = comment
+          additionalData.claim_data = {
+            rejected_by: user.id,
+            rejected_at: new Date().toISOString(),
+            rejection_details: {
+              reason: rejectionReason,
+              comment: comment
+            }
+          }
+          break
+          
+        case 'additional_info_required':
+          if (!comment) {
+            throw new Error('Please specify what information is needed')
+          }
+          additionalData.info_request = comment
+          additionalData.claim_data = {
+            info_requested_by: user.id,
+            info_requested_at: new Date().toISOString(),
+            info_request_details: comment
+          }
+          break
       }
       
-      // Update claim status
+      // Update claim status with validation
       const { data, error } = await supabaseHelpers.updateClaimStatus(
         claim.id, 
         newStatus, 
-        updateData
+        additionalData
       )
       
       if (error) {
         throw error
       }
       
-      // If approved, initiate payment
-      if (newStatus === 'approved') {
+      // Handle post-update actions
+      if (newStatus === 'approved' && data) {
         await initiatePayment(data)
       }
       
       setSuccess(`Claim ${newStatus} successfully`)
       setClaim(data)
       
-      // Close modals
+      // Close all modals
       setShowApprovalModal(false)
       setShowRejectionModal(false)
       setShowInfoRequestModal(false)
@@ -294,18 +302,18 @@ const handleStatusUpdate = async (newStatus) => {
       setSettlementAmount('')
       setDeductible('')
       
-      // Refresh claim details
+      // Refresh claim details after a moment
       setTimeout(() => {
         fetchClaimDetails()
       }, 1500)
       
-     } catch (err) {
-    console.error('Status update error:', err)
-    setError(err.message || 'Failed to update claim status')
-  } finally {
-    setUpdating(false)
+    } catch (err) {
+      console.error('Status update error:', err)
+      setError(err.message || 'Failed to update claim status')
+    } finally {
+      setUpdating(false)
+    }
   }
-}
   
   const initiatePayment = async (updatedClaim) => {
     try {
