@@ -7,7 +7,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 // Define valid status transitions
 const CLAIM_STATUS_TRANSITIONS = {
-  submitted: ['processing', 'rejected'],
+  submitted: ['processing', 'rejected', 'approved'],
   processing: ['under_review', 'approved', 'rejected', 'additional_info_required'],
   under_review: ['approved', 'rejected', 'additional_info_required'],
   additional_info_required: ['processing', 'rejected'],

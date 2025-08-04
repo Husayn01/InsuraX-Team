@@ -5,7 +5,7 @@ import {
   BarChart3, Activity, Brain, Shield, Clock,
   CheckCircle, XCircle, Eye, ChevronRight,
   Sparkles, Zap, DollarSign, ArrowUpRight,
-  ArrowDownRight, Filter, RefreshCw,MapPin
+  ArrowDownRight, Filter, RefreshCw,MapPin, AlertCircle
 } from 'lucide-react'
 import { DashboardLayout, PageHeader, StatsCard } from '@shared/layouts'
 import { Button, Card, CardBody, Badge, LoadingSpinner } from '@shared/components'
@@ -60,19 +60,20 @@ export const InsurerDashboard = () => {
       
       // Calculate stats
       const totalClaims = claims?.length || 0
-      const pendingReview = claims?.filter(c => c.status === 'submitted').length || 0
+      const pendingReview = claims?.filter(c => 
+        c.status === 'submitted' || c.status === 'additional_info_required'
+      ).length || 0
       const approvedToday = claims?.filter(c => {
         if (c.status !== 'approved') return false
         const approvedDate = new Date(c.updated_at)
         const today = new Date()
         return approvedDate.toDateString() === today.toDateString()
       }).length || 0
-      
       const fraudDetected = claims?.filter(c => {
         const riskLevel = c.claim_data?.aiAnalysis?.fraudAssessment?.riskLevel
         return riskLevel === 'high' || riskLevel === 'critical'
       }).length || 0
-      
+
       setStats({
         totalClaims,
         pendingReview,
@@ -141,13 +142,25 @@ export const InsurerDashboard = () => {
       submitted: { 
         color: 'bg-blue-500/20 text-blue-400 border-blue-500/30', 
         icon: Clock, 
-        text: 'Pending',
+        text: 'Submitted',
         pulse: false
       },
       processing: { 
-        color: 'bg-amber-500/20 text-amber-400 border-amber-500/30', 
+        color: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30', 
         icon: Activity, 
         text: 'Processing',
+        pulse: true
+      },
+      under_review: { 
+        color: 'bg-purple-500/20 text-purple-400 border-purple-500/30', 
+        icon: Eye, 
+        text: 'Under Review',
+        pulse: false
+      },
+      additional_info_required: { 
+        color: 'bg-amber-500/20 text-amber-400 border-amber-500/30', 
+        icon: AlertCircle, 
+        text: 'Info Required',
         pulse: true
       },
       approved: { 
@@ -162,11 +175,23 @@ export const InsurerDashboard = () => {
         text: 'Rejected',
         pulse: false
       },
-      flagged: { 
+      disputed: { 
         color: 'bg-orange-500/20 text-orange-400 border-orange-500/30', 
         icon: AlertTriangle, 
-        text: 'Flagged',
+        text: 'Disputed',
         pulse: true
+      },
+      settled: { 
+        color: 'bg-green-500/20 text-green-400 border-green-500/30', 
+        icon: DollarSign, 
+        text: 'Settled',
+        pulse: false
+      },
+      closed: { 
+        color: 'bg-gray-500/20 text-gray-400 border-gray-500/30', 
+        icon: Shield, 
+        text: 'Closed',
+        pulse: false
       }
     }
     
@@ -225,7 +250,9 @@ export const InsurerDashboard = () => {
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-NG', {
       style: 'currency',
-      currency: 'NGN'
+      currency: 'NGN',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
     }).format(amount || 0)
   }
 

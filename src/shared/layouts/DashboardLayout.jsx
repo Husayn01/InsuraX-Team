@@ -3,10 +3,11 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { 
   Shield, Menu, X, Home, FileText, CreditCard, 
   User, Bell, LogOut, Brain, BarChart3, Users,
-  Settings, ChevronDown, Activity, 
+  Settings, ChevronDown, Activity, DollarSign
 } from 'lucide-react'
 import { useAuth } from '@contexts/AuthContext'
 import { NotificationBell } from '@features/notifications/components/NotificationComponents'
+import { NairaIcon } from '@shared/components'
 
 export const DashboardLayout = ({ children }) => {
   const { user, profile, signOut, isCustomer, isInsurer } = useAuth()
@@ -24,6 +25,7 @@ export const DashboardLayout = ({ children }) => {
   ] : [
     { name: 'Dashboard', href: '/insurer/dashboard', icon: Home },
     { name: 'Claims', href: '/insurer/claims', icon: FileText },
+    { name: 'Settlements', href: '/insurer/settlements',icon: DollarSign,},
     { name: 'NeuroClaim AI', href: '/insurer/neuroclaim', icon: Brain },
     { name: 'Analytics', href: '/insurer/analytics', icon: BarChart3 },
     { name: 'Customers', href: '/insurer/customers', icon: Users },

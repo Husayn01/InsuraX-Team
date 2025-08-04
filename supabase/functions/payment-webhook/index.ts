@@ -159,13 +159,32 @@ serve(async (req) => {
         const transfer = event.data
         console.log('Transfer successful:', transfer.reference)
 
-        // Update any related records
-        if (transfer.reason && transfer.reason.includes('claim_id:')) {
-          const claimId = transfer.reason.split('claim_id:')[1].split(' ')[0]
-          
+        // Extract claim ID from metadata or reason
+        let claimId = transfer.metadata?.claim_id
+        
+        // Fallback: Extract from reason field
+        if (!claimId && transfer.reason) {
+          const match = transfer.reason.match(/Claim settlement: (CLM-[A-Z0-9-]+)/)
+          if (match) {
+            const claimNumber = match[1]
+            // Find claim by claim number
+            const { data: claimData } = await supabaseClient
+              .from('claims')
+              .select('id')
+              .eq('claim_data->claimNumber', claimNumber)
+              .single()
+            
+            claimId = claimData?.id
+          }
+        }
+
+        if (claimId) {
+          // Update claim settlement status to completed
           await supabaseClient
             .from('claims')
             .update({
+              settlement_status: 'completed',
+              status: 'settled',  // Also update main status
               claim_data: supabaseClient.rpc('jsonb_merge', {
                 target: 'claim_data',
                 source: JSON.stringify({
@@ -176,6 +195,194 @@ serve(async (req) => {
               })
             })
             .eq('id', claimId)
+          
+          // Create notification for customer
+          const { data: claim } = await supabaseClient
+            .from('claims')
+            .select('customer_id, settlement_amount, claim_data')
+            .eq('id', claimId)
+            .single()
+          
+          if (claim) {
+            await supabaseClient
+              .from('notifications')
+              .insert({
+                user_id: claim.customer_id,
+                type: 'settlement_completed',
+                title: 'Settlement Completed! 💰',
+                message: `Your claim ${claim.claim_data?.claimNumber} settlement of ₦${claim.settlement_amount?.toLocaleString()} has been successfully transferred to your account.`,
+                color: 'green',
+                icon: 'check-circle',
+                data: {
+                  claim_id: claimId,
+                  amount: claim.settlement_amount,
+                  transfer_reference: transfer.reference
+                }
+              })
+          }
+        }
+        break
+      }
+
+      // Update payment-webhook/index.ts to handle transfer events properly
+
+      case 'transfer.success': {
+        // Handle successful claim settlement transfer
+        const transfer = event.data
+        console.log('Transfer successful:', transfer.reference)
+
+        // Extract claim ID from metadata or reason
+        let claimId = transfer.metadata?.claim_id
+        
+        // Fallback: Extract from reason field
+        if (!claimId && transfer.reason) {
+          const match = transfer.reason.match(/Claim settlement: CLM-[A-Z0-9-]+/)
+          if (match) {
+            const claimNumber = match[0].replace('Claim settlement: ', '')
+            // Find claim by claim number
+            const { data: claimData } = await supabaseClient
+              .from('claims')
+              .select('id, customer_id')
+              .eq('claim_data->>claimNumber', claimNumber)
+              .single()
+            
+            if (claimData) {
+              claimId = claimData.id
+            }
+          }
+        }
+
+        if (claimId) {
+          // Update claim to settled status
+          await supabaseClient
+            .from('claims')
+            .update({
+              status: 'settled',
+              settlement_status: 'completed',
+              settlement_date: new Date().toISOString(),
+              claim_data: supabaseClient.rpc('jsonb_merge', {
+                target: 'claim_data',
+                source: JSON.stringify({
+                  transfer_completed: true,
+                  transfer_reference: transfer.reference,
+                  transfer_completed_at: new Date().toISOString(),
+                  transfer_amount: transfer.amount,
+                  transfer_final_status: 'success'
+                })
+              })
+            })
+            .eq('id', claimId)
+
+          // Get claim details for notification
+          const { data: claim } = await supabaseClient
+            .from('claims')
+            .select('customer_id, claim_data')
+            .eq('id', claimId)
+            .single()
+
+          if (claim) {
+            // Create success notification
+            await supabaseClient
+              .from('notifications')
+              .insert({
+                user_id: claim.customer_id,
+                type: 'settlement_completed',
+                title: 'Settlement Completed ✅',
+                message: `Your claim ${claim.claim_data.claimNumber} settlement of ₦${(transfer.amount / 100).toLocaleString()} has been successfully transferred to your bank account.`,
+                color: 'green',
+                icon: 'check-circle',
+                data: {
+                  claim_id: claimId,
+                  transfer_reference: transfer.reference,
+                  amount: transfer.amount / 100,
+                  completed_at: new Date().toISOString()
+                }
+              })
+
+            // Log the successful transfer
+            await supabaseClient.rpc('log_payment_action', {
+              p_payment_id: null,
+              p_action: 'transfer_completed',
+              p_status: 'success',
+              p_details: {
+                claim_id: claimId,
+                transfer_code: transfer.transfer_code,
+                reference: transfer.reference,
+                amount: transfer.amount,
+                recipient: transfer.recipient
+              }
+            })
+          }
+        }
+        break
+      }
+
+      case 'transfer.failed':
+      case 'transfer.reversed': {
+        // Handle failed or reversed transfers
+        const transfer = event.data
+        console.error('Transfer failed/reversed:', transfer.reference)
+        
+        let claimId = transfer.metadata?.claim_id
+        
+        if (claimId) {
+          // Update claim status
+          await supabaseClient
+            .from('claims')
+            .update({
+              settlement_status: 'failed',
+              claim_data: supabaseClient.rpc('jsonb_merge', {
+                target: 'claim_data',
+                source: JSON.stringify({
+                  transfer_failed: true,
+                  transfer_failure_reason: transfer.failure_reason || 'Transfer failed',
+                  transfer_failed_at: new Date().toISOString(),
+                  transfer_final_status: event.event === 'transfer.reversed' ? 'reversed' : 'failed'
+                })
+              })
+            })
+            .eq('id', claimId)
+
+          // Get claim details
+          const { data: claim } = await supabaseClient
+            .from('claims')
+            .select('customer_id, claim_data')
+            .eq('id', claimId)
+            .single()
+
+          if (claim) {
+            // Create failure notification
+            await supabaseClient
+              .from('notifications')
+              .insert({
+                user_id: claim.customer_id,
+                type: 'settlement_failed',
+                title: 'Settlement Failed ❌',
+                message: `Settlement for claim ${claim.claim_data.claimNumber} failed. ${transfer.failure_reason || 'Please contact support.'}`,
+                color: 'red',
+                icon: 'x-circle',
+                data: {
+                  claim_id: claimId,
+                  transfer_reference: transfer.reference,
+                  failure_reason: transfer.failure_reason,
+                  failed_at: new Date().toISOString()
+                }
+              })
+
+            // Log the failed transfer
+            await supabaseClient.rpc('log_payment_action', {
+              p_payment_id: null,
+              p_action: 'transfer_failed',
+              p_status: 'failed',
+              p_details: {
+                claim_id: claimId,
+                transfer_code: transfer.transfer_code,
+                reference: transfer.reference,
+                failure_reason: transfer.failure_reason,
+                event_type: event.event
+              }
+            })
+          }
         }
         break
       }

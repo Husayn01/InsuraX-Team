@@ -20,6 +20,7 @@ import {
 import { ClaimsProcessingSystem } from '@features/neuroclaim/services/claimsOrchestrator'
 import { paymentService } from '@services/paymentService'
 import { settlementService } from '@services/settlementService'
+import { SettlementTracker } from '@features/settlements/SettlementTracker'
 
 export const InsurerClaimDetails = () => {
   const { id } = useParams()
@@ -166,6 +167,20 @@ export const InsurerClaimDetails = () => {
       setAnalyzingWithAI(false)
     }
   }
+
+  const handleSettlementStatusUpdate = async (newStatus, transferData) => {
+    console.log('Settlement status updated:', newStatus, transferData)
+    
+    // Refresh claim details to get latest data
+    await fetchClaimDetails()
+    
+    // Show appropriate message
+    if (newStatus === 'completed') {
+      setSuccess('Settlement completed successfully!')
+    } else if (newStatus === 'failed') {
+      setError(`Settlement failed: ${transferData?.failure_reason || 'Unknown error'}`)
+    }
+  }
   
 const verifyBankAccount = async () => {
   if (!bankDetails.bank_code || !bankDetails.account_number) {
@@ -232,6 +247,9 @@ const verifyBankAccount = async () => {
           
           additionalData.settlement_amount = amount
           additionalData.settlement_status = 'pending'
+          additionalData.settlement_date = new Date().toISOString()
+          
+          // Also keep in claim_data for reference
           additionalData.claim_data = {
             settlement_amount: amount,
             deductible: parseFloat(deductible) || 0,
@@ -269,6 +287,32 @@ const verifyBankAccount = async () => {
             info_request_details: comment
           }
           break
+
+          case 'settled':
+          // Update settlement fields
+          additionalData.settlement_status = 'completed'
+          additionalData.settlement_date = new Date().toISOString()
+          additionalData.claim_data = {
+            settled_by: user.id,
+            settled_at: new Date().toISOString(),
+            settlement_completed: true
+          }
+          
+          // Create settlement notification
+          await supabaseHelpers.createNotification({
+            user_id: claim.customer_id,
+            type: 'settlement_completed',
+            title: 'Settlement Completed! 💰',
+            message: `Your claim ${claim.claim_data?.claimNumber} settlement of ₦${claim.settlement_amount?.toLocaleString()} has been completed.`,
+            color: 'green',
+            icon: 'check-circle',
+            data: {
+              claim_id: claim.id,
+              amount: claim.settlement_amount
+            }
+          })
+          break
+
       }
       
       // Update claim status with validation
@@ -334,17 +378,20 @@ const verifyBankAccount = async () => {
           }
         )
         
-        if (settlementResult.success) {
-          // Update claim with payment info
-          await supabaseHelpers.updateClaim(updatedClaim.id, {
-            claim_data: {
-              ...updatedClaim.claim_data,
-              payment_reference: settlementResult.data.reference,
-              payment_status: 'processing',
-              transfer_code: settlementResult.data.transfer_code
-            }
-          })
-        }
+      if (settlementResult.success) {
+        // Update claim with payment info AND settlement status
+        await supabaseHelpers.updateClaim(updatedClaim.id, {
+          settlement_status: 'processing',  // Add this at root level
+          settlement_date: new Date().toISOString(),  // Add this
+          claim_data: {
+            ...updatedClaim.claim_data,
+            payment_reference: settlementResult.data.reference,
+            payment_status: 'processing',
+            transfer_code: settlementResult.data.transfer_code
+          }
+        })
+      }
+      
       } else {
         // Initialize Paystack payment for other methods
         const paymentData = {
@@ -1016,6 +1063,14 @@ const verifyBankAccount = async () => {
             </CardBody>
           </Card>
         )}
+
+         {/* Settlement Tracker - ADD THIS NEW SECTION */}
+        {claim?.status === 'approved' && claim?.settlement_status && (
+          <SettlementTracker 
+            claim={claim}
+            onStatusUpdate={handleSettlementStatusUpdate}
+          />
+        )}
       </div>
     )
   }
@@ -1046,7 +1101,7 @@ const verifyBankAccount = async () => {
         description={`Claim #${claim?.claim_data?.claimNumber || 'Loading...'}`}
         actions={
           <div className="flex gap-3">
-            {claim?.status !== 'approved' && claim?.status !== 'rejected' && claim?.status !== 'closed' && (
+            {claim.status !== 'approved' && claim.status !== 'rejected' && claim.status !== 'settled' && claim.status !== 'closed' && (
               <>
                 <Button
                   variant="secondary"

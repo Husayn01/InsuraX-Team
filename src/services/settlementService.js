@@ -132,6 +132,17 @@ export const settlementService = {
         // Log successful settlement initiation
         console.log('Settlement initiated successfully:', data)
 
+
+        // Update claim with settlement tracking
+        await supabase
+          .from('claims')
+          .update({
+            settlement_status: 'processing',
+            settlement_date: new Date().toISOString(),
+            settlement_amount: settlementData.amount
+          })
+          .eq('id', claimId)
+
         return {
           success: true,
           data: {
