@@ -4,7 +4,8 @@ import {
   FileText, Plus, Search, Filter, Download, 
   Calendar, ChevronDown, Eye, Clock, CheckCircle, 
   XCircle, AlertCircle, Shield, TrendingUp,
-  Activity, Sparkles, ChevronRight, Brain, Car, Stethoscope, Home, Heart
+  Activity, Sparkles, ChevronRight, Brain, Car, Stethoscope, Home, 
+  Heart, DollarSign, RefreshCw, AlertTriangle
 } from 'lucide-react'
 import { useAuth } from '@contexts/AuthContext'
 import { supabaseHelpers } from '@services/supabase'
@@ -14,6 +15,7 @@ import {
   LoadingSpinner, Alert, EmptyState 
 } from '@shared/components'
 import { format } from 'date-fns'
+import { NairaIcon } from '@shared/components'
 
 export const CustomerClaims = () => {
   const { user } = useAuth()
@@ -139,8 +141,18 @@ export const CustomerClaims = () => {
         pulse: false 
       },
       processing: { 
-        color: 'bg-amber-500/20 text-amber-400 border-amber-500/30', 
+        color: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30', 
         icon: Activity,
+        pulse: true 
+      },
+      under_review: { 
+        color: 'bg-purple-500/20 text-purple-400 border-purple-500/30', 
+        icon: Eye,
+        pulse: false 
+      },
+      additional_info_required: { 
+        color: 'bg-amber-500/20 text-amber-400 border-amber-500/30', 
+        icon: AlertCircle,
         pulse: true 
       },
       approved: { 
@@ -152,6 +164,21 @@ export const CustomerClaims = () => {
         color: 'bg-red-500/20 text-red-400 border-red-500/30', 
         icon: XCircle,
         pulse: false 
+      },
+      disputed: { 
+        color: 'bg-orange-500/20 text-orange-400 border-orange-500/30', 
+        icon: AlertTriangle,
+        pulse: true 
+      },
+      settled: { 
+        color: 'bg-green-500/20 text-green-400 border-green-500/30', 
+        icon: DollarSign,
+        pulse: false 
+      },
+      closed: { 
+        color: 'bg-gray-500/20 text-gray-400 border-gray-500/30', 
+        icon: Shield,
+        pulse: false 
       }
     }
     
@@ -160,7 +187,7 @@ export const CustomerClaims = () => {
     return (
       <Badge className={`${color} border backdrop-blur-sm ${pulse ? 'animate-pulse' : ''}`}>
         <Icon className="w-3.5 h-3.5 mr-1.5" />
-        {status.charAt(0).toUpperCase() + status.slice(1)}
+        {status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')}
       </Badge>
     )
   }
@@ -175,6 +202,41 @@ const getClaimTypeIcon = (type) => {
   }
   return icons[type] || '▪'
 }
+
+  const getSettlementBadge = (status) => {
+    const configs = {
+      pending: { 
+        color: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+        icon: Clock,
+        label: 'Pending'
+      },
+      processing: { 
+        color: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+        icon: RefreshCw,
+        label: 'Processing'
+      },
+      completed: { 
+        color: 'bg-green-500/20 text-green-400 border-green-500/30',
+        icon: CheckCircle,
+        label: 'Completed'
+      },
+      failed: { 
+        color: 'bg-red-500/20 text-red-400 border-red-500/30',
+        icon: XCircle,
+        label: 'Failed'
+      }
+    }
+    
+    const config = configs[status] || configs.pending
+    const Icon = config.icon
+    
+    return (
+      <Badge className={`${config.color} border flex items-center gap-1`}>
+        <Icon className="w-3 h-3" />
+        {config.label}
+      </Badge>
+    )
+  }
 
   if (loading) {
     return (
@@ -250,6 +312,8 @@ const getClaimTypeIcon = (type) => {
           </Card>
         ))}
       </div>
+
+
 
       {/* Filters and Search */}
       <Card className="mb-6 bg-gray-800/50 backdrop-blur-sm border-gray-700/50">
@@ -384,7 +448,42 @@ const getClaimTypeIcon = (type) => {
                           {claim.claim_data.damageDescription}
                         </p>
                       )}
+
+                      {claim.claim_data?.damageDescription && (
+                        <p className="text-sm text-gray-300 line-clamp-2 ml-16">
+                          {claim.claim_data.damageDescription}
+                        </p>
+                      )}
+
+                      {/* Settlement Status for Approved Claims - ADD THIS SECTION HERE */}
+                      {claim.status === 'approved' && claim.settlement_status && (
+                        <div className="mt-4 pt-4 border-t border-gray-700 ml-16">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <NairaIcon className="w-4 h-4 text-cyan-400" />
+                              <span className="text-sm text-gray-400">Settlement Status:</span>
+                            </div>
+                            {getSettlementBadge(claim.settlement_status)}
+                          </div>
+                          
+                          {claim.settlement_amount && (
+                            <div className="mt-2 text-sm text-gray-400">
+                              Amount: <span className="text-white font-medium">
+                                ₦{claim.settlement_amount.toLocaleString()}
+                              </span>
+                            </div>
+                          )}
+                          
+                          {claim.settlement_date && claim.settlement_status === 'completed' && (
+                            <div className="mt-1 text-xs text-gray-500">
+                              Settled on {format(new Date(claim.settlement_date), 'MMM d, yyyy')}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
+
+
                     
                     <div className="flex items-center gap-2 ml-4">
                       <div className="p-2 bg-gray-700/50 rounded-lg group-hover:bg-cyan-500/20 transition-all duration-300">
@@ -401,7 +500,7 @@ const getClaimTypeIcon = (type) => {
       </div>
 
       {/* Add custom animations */}
-      <style jsx>{`
+      <style>{`
         @keyframes float {
           0%, 100% { transform: translateY(0px); }
           50% { transform: translateY(-20px); }

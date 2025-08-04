@@ -61,80 +61,159 @@ export const CustomerDashboard = () => {
 
   const handleClaimUpdate = (payload) => {
     console.log('Claim update received:', payload)
-    // Refresh dashboard data when claims are updated
+    
+    // Check if this update is a settlement
+    if (payload.new?.settlement_status === 'completed' || 
+        payload.new?.status === 'settled') {
+      // Show a notification
+      const amount = payload.new?.settlement_amount
+      if (amount) {
+        // You can use a toast notification here
+        console.log(`Settlement of ₦${amount.toLocaleString()} completed!`)
+      }
+    }
+    
+    // Refresh dashboard data
     fetchDashboardData()
   }
 
-  const fetchDashboardData = async () => {
-    try {
-      setLoading(true)
-      
-      // Fetch user's claims
-      const { data: claims } = await supabaseHelpers.getClaims({
-        customer_id: user.id
-      })
-      
-      // Calculate stats
-      const totalClaims = claims?.length || 0
-      const activeClaims = claims?.filter(c => 
-        c.status === 'submitted' || c.status === 'processing'
-      ).length || 0
-      
-      const totalPaid = claims?.filter(c => c.status === 'approved')
-        .reduce((sum, claim) => sum + (claim.claim_data?.approvedAmount || 0), 0) || 0
-      
-      setStats({
-        totalClaims,
-        activeClaims,
-        pendingPayments: 0, // This would come from payments table
-        totalPaid
-      })
-      
-      // Get recent claims (last 5)
-      setRecentClaims(claims?.slice(0, 5) || [])
-      
-      // Simulate recent activity
-      const activities = [
-        {
-          id: 1,
-          type: 'claim',
-          icon: FileText,
-          color: 'from-blue-400 to-cyan-400',
-          bgColor: 'from-blue-500/20 to-cyan-500/20',
-          title: 'Claim submitted',
-          description: 'Your claim #CLM-2024-001 has been submitted',
-          time: new Date(Date.now() - 86400000)
-        },
-        {
-          id: 2,
-          type: 'payment',
-          icon: DollarSign,
-          color: 'from-emerald-400 to-green-400',
-          bgColor: 'from-emerald-500/20 to-green-500/20',
-          title: 'Payment received',
-          description: 'Monthly premium payment processed',
-          time: new Date(Date.now() - 172800000)
-        },
-        {
-          id: 3,
-          type: 'notification',
-          icon: Bell,
-          color: 'from-purple-400 to-pink-400',
-          bgColor: 'from-purple-500/20 to-pink-500/20',
-          title: 'Policy update',
-          description: 'Your policy coverage has been updated',
-          time: new Date(Date.now() - 259200000)
-        }
-      ]
-      
-      setRecentActivity(activities)
-      
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error)
-    } finally {
-      setLoading(false)
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true)
+        
+        // Fetch user's claims
+        const { data: claims } = await supabaseHelpers.getClaims({
+          customer_id: user.id
+        })
+        
+        // Fetch user's payments
+        const { data: payments } = await supabaseHelpers.getPayments({
+          customer_id: user.id
+        })
+        
+        // Calculate stats
+        const totalClaims = claims?.length || 0
+        const activeClaims = claims?.filter(c => 
+          ['submitted', 'processing', 'under_review', 'additional_info_required'].includes(c.status)
+        ).length || 0
+        
+        // Calculate pending payments (approved but not settled)
+        const pendingPayments = claims?.filter(c => 
+          c.status === 'approved' && c.settlement_status !== 'completed'
+        ).reduce((sum, claim) => sum + (claim.settlement_amount || 0), 0) || 0
+        
+        // Calculate total paid out (settled claims)
+        const totalPaid = claims?.filter(c => 
+          c.status === 'settled' || c.settlement_status === 'completed'
+        ).reduce((sum, claim) => sum + (claim.settlement_amount || 0), 0) || 0
+        
+        setStats({
+          totalClaims,
+          activeClaims,
+          pendingPayments,
+          totalPaid
+        })
+        
+        // Get recent claims (last 5)
+        setRecentClaims(claims?.slice(0, 5) || [])
+        
+        // Build real activity timeline from claims and payments
+        const activities = []
+        
+        // Add claim activities
+        claims?.slice(0, 10).forEach(claim => {
+          // Claim submitted
+          activities.push({
+            id: `claim-${claim.id}`,
+            type: 'claim',
+            icon: FileText,
+            color: 'from-blue-400 to-cyan-400',
+            bgColor: 'from-blue-500/20 to-cyan-500/20',
+            title: 'Claim submitted',
+            description: `Claim ${claim.claim_data?.claimNumber || '#' + claim.id.slice(0, 8)} submitted`,
+            time: new Date(claim.created_at)
+          })
+          
+          // Status updates
+          if (claim.status === 'approved') {
+            activities.push({
+              id: `approved-${claim.id}`,
+              type: 'status',
+              icon: CheckCircle,
+              color: 'from-emerald-400 to-green-400',
+              bgColor: 'from-emerald-500/20 to-green-500/20',
+              title: 'Claim approved',
+              description: `Claim ${claim.claim_data?.claimNumber} has been approved`,
+              time: new Date(claim.updated_at)
+            })
+          }
+          
+          if (claim.status === 'settled' || claim.settlement_status === 'completed') {
+            activities.push({
+              id: `settled-${claim.id}`,
+              type: 'payment',
+              icon: DollarSign,
+              color: 'from-emerald-400 to-green-400',
+              bgColor: 'from-emerald-500/20 to-green-500/20',
+              title: 'Settlement completed',
+              description: `₦${claim.settlement_amount?.toLocaleString()} paid for claim ${claim.claim_data?.claimNumber}`,
+              time: new Date(claim.settlement_date || claim.updated_at)
+            })
+          }
+          
+          if (claim.status === 'rejected') {
+            activities.push({
+              id: `rejected-${claim.id}`,
+              type: 'status',
+              icon: XCircle,
+              color: 'from-red-400 to-pink-400',
+              bgColor: 'from-red-500/20 to-pink-500/20',
+              title: 'Claim rejected',
+              description: `Claim ${claim.claim_data?.claimNumber} was rejected`,
+              time: new Date(claim.updated_at)
+            })
+          }
+          
+          if (claim.status === 'additional_info_required') {
+            activities.push({
+              id: `info-${claim.id}`,
+              type: 'status',
+              icon: AlertCircle,
+              color: 'from-amber-400 to-orange-400',
+              bgColor: 'from-amber-500/20 to-orange-500/20',
+              title: 'Information required',
+              description: `Additional information needed for claim ${claim.claim_data?.claimNumber}`,
+              time: new Date(claim.updated_at)
+            })
+          }
+        })
+        
+        // Add payment activities
+        payments?.forEach(payment => {
+          if (payment.status === 'success') {
+            activities.push({
+              id: `payment-${payment.id}`,
+              type: 'payment',
+              icon: CreditCard,
+              color: 'from-purple-400 to-pink-400',
+              bgColor: 'from-purple-500/20 to-pink-500/20',
+              title: 'Payment processed',
+              description: `Payment of ₦${payment.amount?.toLocaleString()} processed successfully`,
+              time: new Date(payment.paid_at || payment.created_at)
+            })
+          }
+        })
+        
+        // Sort activities by time (newest first) and take top 10
+        activities.sort((a, b) => b.time - a.time)
+        setRecentActivity(activities.slice(0, 10))
+        
+      } catch (error) {
+        console.error('Error fetching dashboard data:', error)
+      } finally {
+        setLoading(false)
+      }
     }
-  }
 
   const getStatusIcon = (status) => {
     switch (status) {

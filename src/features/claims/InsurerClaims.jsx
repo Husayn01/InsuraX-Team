@@ -602,7 +602,7 @@ export const InsurerClaims = () => {
       </Card>
 
       {/* Add custom animations */}
-      <style jsx>{`
+      <style>{`
         @keyframes float {
           0%, 100% { transform: translateY(0px); }
           50% { transform: translateY(-20px); }

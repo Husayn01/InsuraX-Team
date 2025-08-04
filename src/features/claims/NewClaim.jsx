@@ -384,185 +384,113 @@ export const NewClaim = () => {
   }
 
   // Final submission with updated error handling and fallbacks
+
   const handleSubmit = async () => {
-    console.log('Submit clicked, validating...')
-    
-    // Ensure we have data to submit
-    let dataToSubmit = { ...formData }
-    if (!dataToSubmit.claimType && extractedData) {
-      dataToSubmit = {
-        claimType: extractedData.claimType || '',
-        description: extractedData.incidentDescription || '',
-        dateOfIncident: extractedData.dateOfIncident || '',
-        location: extractedData.incidentLocation || '',
-        estimatedAmount: extractedData.estimatedAmount || extractedData.claimAmount || '',
-        fullName: extractedData.claimantName || formData.fullName || '',
-        email: extractedData.contactEmail || formData.email || '',
-        phone: extractedData.contactPhone || formData.phone || '',
-        address: extractedData.claimantAddress || formData.address || ''
-      }
-    }
-    
-    // Validate
-    const errors = {}
-    if (!dataToSubmit.claimType) errors.claimType = 'Claim type is required'
-    if (!dataToSubmit.description) errors.description = 'Description is required'
-    if (!dataToSubmit.dateOfIncident) errors.dateOfIncident = 'Date is required'
-    if (!dataToSubmit.location) errors.location = 'Location is required'
-    if (!dataToSubmit.estimatedAmount || isNaN(parseFloat(dataToSubmit.estimatedAmount))) {
-      errors.estimatedAmount = 'Valid amount is required'
-    }
-    if (!dataToSubmit.fullName) errors.fullName = 'Full name is required'
-    if (!dataToSubmit.email) errors.email = 'Email is required'
-    if (!dataToSubmit.phone) errors.phone = 'Phone number is required'
-    if (!dataToSubmit.address) errors.address = 'Address is required'
-    
-    if (Object.keys(errors).length > 0) {
-      console.log('Validation errors:', errors)
-      setValidationErrors(errors)
-      setError('Please complete all required fields')
-      return
-    }
-    
-    console.log('Validation passed, submitting...')
-    setLoading(true)
+    console.log('Starting claim submission...')
     setError(null)
+    setLoading(true)
+    setProcessingStatus('Validating information...')
     
     try {
-      // Generate claim number
-      const claimNumber = `CLM-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`
-      console.log('Generated claim number:', claimNumber)
+      // Step 1: Prepare form data (merge with extracted data if available)
+      const finalData = {
+        claimType: formData.claimType || extractedData?.claimType || '',
+        description: formData.description || extractedData?.incidentDescription || '',
+        dateOfIncident: formData.dateOfIncident || extractedData?.incidentDate || '',
+        location: formData.location || extractedData?.incidentLocation || '',
+        estimatedAmount: formData.estimatedAmount || extractedData?.estimatedAmount || extractedData?.claimAmount || '',
+        fullName: formData.fullName || extractedData?.claimantName || user?.user_metadata?.full_name || '',
+        email: formData.email || extractedData?.contactEmail || user?.email || '',
+        phone: formData.phone || extractedData?.contactPhone || '',
+        address: formData.address || extractedData?.claimantAddress || ''
+      }
       
-      // Create claim payload
+      // Step 2: Validate all required fields
+      const errors = {}
+      if (!finalData.claimType) errors.claimType = 'Claim type is required'
+      if (!finalData.description) errors.description = 'Description is required'
+      if (!finalData.dateOfIncident) errors.dateOfIncident = 'Date of incident is required'
+      if (!finalData.location) errors.location = 'Location is required'
+      if (!finalData.estimatedAmount || isNaN(parseFloat(finalData.estimatedAmount))) {
+        errors.estimatedAmount = 'Valid amount is required'
+      }
+      if (!finalData.fullName) errors.fullName = 'Full name is required'
+      if (!finalData.email) errors.email = 'Email is required'
+      if (!finalData.phone) errors.phone = 'Phone number is required'
+      if (!finalData.address) errors.address = 'Address is required'
+      
+      if (Object.keys(errors).length > 0) {
+        setValidationErrors(errors)
+        setError('Please fill in all required fields')
+        setLoading(false)
+        return
+      }
+      
+      setProcessingStatus('Preparing claim...')
+      
+      // Step 3: Generate claim number
+      const claimNumber = generateClaimNumber()
+      
+      // Step 4: Prepare claim payload without waiting for AI
       const claimPayload = {
         customer_id: user.id,
         status: 'submitted',
         claim_data: {
           claimNumber,
-          claimType: dataToSubmit.claimType,
-          dateOfIncident: dataToSubmit.dateOfIncident,
-          incidentLocation: dataToSubmit.location,
-          incidentDescription: dataToSubmit.description,
-          estimatedAmount: parseFloat(dataToSubmit.estimatedAmount),
-          claimantName: dataToSubmit.fullName,
-          claimantAddress: dataToSubmit.address,
-          contactPhone: dataToSubmit.phone,
-          contactEmail: dataToSubmit.email,
-          policyNumber: dataToSubmit.policyNumber || null,
-          // Include AI results if available
-          ...(aiPreviewResult && {
-            fraudRiskLevel: aiPreviewResult.fraudAssessment?.riskLevel,
-            fraudRiskScore: aiPreviewResult.fraudAssessment?.riskScore,
-            categorization: aiPreviewResult.categorization,
-            aiAnalyzed: true,
-            aiAnalyzedAt: new Date().toISOString()
-          })
+          claimType: finalData.claimType,
+          incidentDate: finalData.dateOfIncident,
+          incidentLocation: finalData.location,
+          incidentDescription: finalData.description,
+          estimatedAmount: parseFloat(finalData.estimatedAmount),
+          claimantName: finalData.fullName,
+          contactEmail: finalData.email,
+          contactPhone: finalData.phone,
+          claimantAddress: finalData.address,
+          submittedAt: new Date().toISOString(),
+          // Don't wait for AI preview - add it if available
+          aiPreviewResult: aiPreviewResult || null,
+          extractedData: extractedData || null,
+          documentsCount: uploadedDocuments.length
         }
       }
       
-      console.log('Creating claim with payload:', claimPayload)
+      setProcessingStatus('Creating claim...')
       
-      let result
-      let createdClaimId
+      // Step 5: Submit claim immediately without waiting for AI
+      let claimResult;
       
-      // Method 1: Try the transactional method first
-      try {
-        if (uploadedDocuments.length > 0) {
-          console.log(`Uploading ${uploadedDocuments.length} documents...`)
-          result = await supabaseHelpers.createClaimWithDocuments(
-            claimPayload,
-            uploadedDocuments.map(doc => doc.file),
-            user.id
-          )
-        } else {
-          console.log('Creating claim without documents...')
-          const { data, error } = await supabaseHelpers.createClaim(claimPayload)
-          result = { success: !error, claim: data, error }
-        }
-        
-        if (result.success) {
-          createdClaimId = result.claim.id
-        }
-      } catch (methodError) {
-        console.error('Primary submission method failed:', methodError)
-        
-        // Method 2: Direct Supabase call as fallback
-        console.log('Trying direct Supabase insertion...')
-        try {
-          const { data: directClaim, error: directError } = await supabase
-            .from('claims')
-            .insert([{
-              ...claimPayload,
-              documents: [],
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            }])
-            .select()
-            .single()
-          
-          if (directError) {
-            console.error('Direct insertion failed:', directError)
-            throw directError
-          }
-          
-          console.log('Direct insertion successful:', directClaim)
-          result = { success: true, claim: directClaim }
-          createdClaimId = directClaim.id
-          
-          // Upload documents separately if they exist
-          if (directClaim && uploadedDocuments.length > 0) {
-            console.log('Uploading documents separately...')
-            try {
-              const uploadPromises = uploadedDocuments.map(async (doc, index) => {
-                try {
-                  const uploadResult = await documentUploadService.uploadFile(
-                    doc.file,
-                    directClaim.id,
-                    user.id
-                  )
-                  return uploadResult
-                } catch (uploadErr) {
-                  console.error(`Failed to upload document ${index + 1}:`, uploadErr)
-                  return null
-                }
-              })
-              
-              const uploadResults = await Promise.allSettled(uploadPromises)
-              const successfulUploads = uploadResults
-                .filter(r => r.status === 'fulfilled' && r.value)
-                .map(r => r.value)
-              
-              if (successfulUploads.length > 0) {
-                // Update claim with successful uploads
-                await supabase
-                  .from('claims')
-                  .update({
-                    documents: successfulUploads.map(u => u.url),
-                    claim_data: {
-                      ...directClaim.claim_data,
-                      documents: successfulUploads
-                    },
-                    updated_at: new Date().toISOString()
-                  })
-                  .eq('id', directClaim.id)
-              }
-            } catch (uploadError) {
-              console.error('Document upload failed:', uploadError)
-              // Don't fail the entire submission if just documents failed
-            }
-          }
-        } catch (directError) {
-          throw new Error('All submission methods failed. Please try again.')
+      // If we have documents, use the transactional method
+      if (uploadedDocuments.length > 0) {
+        claimResult = await supabaseHelpers.createClaimWithDocuments(
+          claimPayload,
+          uploadedDocuments.map(doc => doc.file),
+          user.id
+        )
+      } else {
+        // No documents - just create the claim directly
+        const { data, error } = await supabaseHelpers.createClaim(claimPayload)
+        claimResult = { 
+          success: !error, 
+          claim: data, 
+          error: error?.message,
+          uploadedFiles: [],
+          uploadErrors: []
         }
       }
       
-      if (!result || !result.success) {
-        throw new Error(result?.error || 'Failed to submit claim')
+      if (!claimResult.success) {
+        throw new Error(claimResult.error || 'Failed to submit claim')
       }
       
-      console.log('Claim created successfully:', result.claim)
+      console.log('Claim submitted successfully:', claimResult.claim.id)
       
-      // Create notification
+      // Step 6: Show any upload warnings
+      if (claimResult.warning) {
+        console.warn(claimResult.warning)
+        // You could show this as a warning notification to the user
+      }
+      
+      // Step 7: Create success notification
       try {
         await supabaseHelpers.createNotification({
           user_id: user.id,
@@ -572,27 +500,70 @@ export const NewClaim = () => {
           color: 'green',
           icon: 'check-circle',
           data: {
-            claimId: createdClaimId,
+            claimId: claimResult.claim.id,
             claimNumber: claimNumber
           }
         })
       } catch (notifError) {
-        console.error('Failed to create notification:', notifError)
-        // Don't fail the submission if notification fails
+        console.error('Notification creation failed:', notifError)
+      }
+      
+      // Step 8: Run AI analysis in background (non-blocking)
+      if (!aiPreviewResult && claimResult.claim) {
+        console.log('Running AI analysis in background...')
+        runBackgroundAIAnalysis(claimResult.claim.id, finalData)
       }
       
       setSuccess(true)
+      setProcessingStatus('Claim submitted successfully!')
       
-      // Redirect after a short delay
+      // Redirect after showing success
       setTimeout(() => {
         navigate('/customer/claims')
       }, 2000)
       
-    } catch (err) {
-      console.error('Submission error:', err)
-      setError(err.message || 'Failed to submit claim. Please try again.')
+    } catch (error) {
+      console.error('Claim submission error:', error)
+      setError(error.message || 'Failed to submit claim. Please try again.')
+      setProcessingStatus('')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // New method to run AI analysis in background
+  const runBackgroundAIAnalysis = async (claimId, claimData) => {
+    try {
+      const claimText = `
+        Claim Type: ${claimData.claimType}
+        Date: ${claimData.dateOfIncident}
+        Location: ${claimData.location}
+        Amount: ₦${claimData.estimatedAmount}
+        Description: ${claimData.description}
+      `
+      
+      const result = await claimsSystem.processClaimComplete(claimText, {
+        generateCustomerResponse: false,
+        generateInternalMemo: false
+      })
+      
+      if (result.success) {
+        // Update the claim with AI results
+        await supabaseHelpers.updateClaim(claimId, {
+          claim_data: {
+            aiAnalysis: {
+              fraudAssessment: result.fraudAssessment,
+              categorization: result.categorization,
+              summary: result.summary,
+              analyzedAt: new Date().toISOString()
+            }
+          }
+        })
+        console.log('AI analysis completed and saved')
+      }
+    } catch (error) {
+      console.error('Background AI analysis failed:', error)
+      // Don't throw - this is non-critical
     }
   }
 
